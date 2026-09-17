@@ -1,0 +1,40 @@
+name: Tests
+
+# GitHub Flow: main changes only through a pull request, and a pull request
+# can merge only when up to date with main — so the run on the pull request
+# has already tested what lands, and a second run after the merge would test
+# the same tree again.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push makes the run before it pointless, and macOS minutes are the
+# expensive ones.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Pinned rather than macos-latest: the simulator below is named, and an
+    # image bump should not be what breaks the build.
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      # The package promises a clean build, so a warning fails it here rather
+      # than piling up unnoticed.
+      - name: swift test (macOS)
+        run: swift test -Xswiftc -warnings-as-errors
+
+      # The UIKit layer is compiled out on macOS; only the simulator runs it.
+      - name: xcodebuild test (iOS Simulator)
+        run: >-
+          xcodebuild test
+          -scheme TalqynSDK-Package
+          -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest'
+          -quiet
