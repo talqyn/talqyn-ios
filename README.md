@@ -165,6 +165,14 @@ found.history        // the shopper's past queries (needs events, see below)
 found.correctedFrom  // set if the server quietly searched for corrected text
 found.searchID       // travels into the click event
 
+// The start screen — what to show when the field is focused and empty.
+let start = try await talqyn.search.start(TalqynStartQuery(limit: 8))
+start.history         // this shopper's recent queries (needs events, see below)
+start.popularQueries  // what the storefront searches for
+start.categories      // root categories of the catalog
+start.products        // popular products, ranked by clicks — no score, no relevance
+start.searchID        // travels into the click event, with source .start
+
 // A listing with filters and sorting, a page at a time.
 let query = TalqynFullSearchQuery(
     query: "smartphone",
@@ -184,6 +192,10 @@ panel.cityGroup          // the city picker: option.id goes into cityID
 panel.locationGroup      // the store picker: option.id goes into locationID
 panel.selectedFilters    // what is selected now, in the shape of the next request
 ```
+
+Call `start` when the field takes focus, not on every redraw: each call is billed
+as a search. Report a tap on one of its cards with `source: .start` — those clicks
+are kept out of search ranking, so that the screen cannot rank itself.
 
 `talqynID` is Talqyn's internal id and does not exist in your catalog. Everything
 you do on your side, do by `externalID` — it is optional, and whether to show a
@@ -349,6 +361,9 @@ Where the `searchID` comes from:
 - **Instant search** — `found.searchID`, one per response.
 - **A listing** — `listing.searchID`, on the **first** page only: later pages
   continue the same results, so keep the id for the whole listing.
+- **The start screen** — `start.searchID`, with `source: .start`. These clicks
+  are kept out of search ranking: the screen's products are the most-clicked
+  ones, so counting them there would let it rank itself.
 - **The consultant** — the `searchID` of the turn's `products`, with
   `source: .consultant` and `position` counted across all of the turn's products.
 

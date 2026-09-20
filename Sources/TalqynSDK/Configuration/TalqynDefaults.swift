@@ -51,6 +51,16 @@ final class TalqynDefaultsBox: @unchecked Sendable {
         }
     }
 
+    func apply(to query: inout TalqynStartQuery) {
+        let defaults = current
+        query.locale = query.locale ?? defaults.locale
+        query.variant = query.variant ?? defaults.variant
+        if query.cityID == nil, query.locationID == nil {
+            query.cityID = defaults.cityID
+            query.locationID = defaults.locationID
+        }
+    }
+
     func apply(to query: inout TalqynFullSearchQuery) {
         current.apply(to: &query)
     }

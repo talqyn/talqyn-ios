@@ -9,6 +9,14 @@ public enum TalqynEventSource: String, Sendable, Codable {
     /// The consultant's results. Not valid for
     /// ``TalqynSearchSubmitEvent/source``.
     case consultant = "cip"
+    /// The start screen of an empty search field — ``TalqynSearchAPI/start(_:)``.
+    /// Not valid for ``TalqynSearchSubmitEvent/source``: the screen has no query
+    /// to submit.
+    ///
+    /// A tap here is counted apart from the rest on purpose. The screen's own
+    /// products come from the most-clicked list, so feeding these clicks back
+    /// would let it rank itself; they stay out of search ranking entirely.
+    case start
 }
 
 /// A shopper tapped a product card.

@@ -57,6 +57,47 @@ final class DecodingTests: XCTestCase {
         XCTAssertNil(product.brandLogoURL)
     }
 
+    func testStartScreenResponse() throws {
+        let response = try decode(TalqynStartResponse.self, """
+        {
+          "search_id": "0d3c1b2a-0000-4000-8000-000000000000",
+          "locale": "ru",
+          "history": ["sony headphones", "iphone 15 case"],
+          "popular_queries": ["iphone 15", "tv", "robot vacuum"],
+          "categories": [{"id": 12, "name": "Phones and gadgets", "slug": "smartfony-i-gadzhety", "path": "smartfony_i_gadzhety", "parent_name": null}],
+          "products": [{
+            "talqyn_id": 1234, "external_id": "256073",
+            "title": "Apple iPhone 15 128GB", "price": 449990, "in_stock": true,
+            "image_url": "https://cdn.example.com/1.jpg", "url": "https://shop.example.com/p/1",
+            "score": null
+          }]
+        }
+        """)
+
+        XCTAssertEqual(response.searchID, "0d3c1b2a-0000-4000-8000-000000000000")
+        XCTAssertEqual(response.locale, "ru")
+        XCTAssertEqual(response.history, ["sony headphones", "iphone 15 case"])
+        XCTAssertEqual(response.popularQueries, ["iphone 15", "tv", "robot vacuum"])
+        XCTAssertEqual(response.categories.first?.id, 12)
+        XCTAssertNil(response.categories.first?.parentName)
+
+        let product = try XCTUnwrap(response.products.first)
+        XCTAssertEqual(product.talqynID, 1234)
+        XCTAssertEqual(product.externalID, "256073")
+        // Popularity, not relevance: the screen ranks by clicks, so a card
+        // carries no score.
+        XCTAssertNil(product.score)
+    }
+
+    /// Four independent blocks: a server that omits one is not a broken response.
+    func testEmptyStartScreenReadsAsEmptyBlocks() throws {
+        let response = try decode(TalqynStartResponse.self, #"{"search_id": "s", "locale": "kk"}"#)
+        XCTAssertTrue(response.history.isEmpty)
+        XCTAssertTrue(response.popularQueries.isEmpty)
+        XCTAssertTrue(response.categories.isEmpty)
+        XCTAssertTrue(response.products.isEmpty)
+    }
+
     func testProductAcceptsLegacyProductIDAlias() throws {
         let product = try decode(TalqynProduct.self, #"{"product_id": 55, "title": "x"}"#)
         XCTAssertEqual(product.talqynID, 55)

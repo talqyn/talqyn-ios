@@ -31,6 +31,24 @@ final class QueryEncodingTests: XCTestCase {
         XCTAssertNil(json["price_max"])
     }
 
+    func testStartQueryUsesContractFieldNamesAndCarriesNoQuery() throws {
+        let json = try encode(TalqynStartQuery(locale: .kk, limit: 8, cityID: "10", variant: "b"))
+        XCTAssertEqual(json["locale"] as? String, "kk")
+        XCTAssertEqual(json["limit"] as? Int, 8)
+        XCTAssertEqual(json["city_id"] as? String, "10")
+        XCTAssertEqual(json["variant"] as? String, "b")
+        // An empty query is not a query: the endpoint has no such field, and
+        // sending one would be a 422.
+        XCTAssertNil(json["query"])
+        XCTAssertNil(json["location_id"])
+    }
+
+    func testStartQueryDefaultsToTenProducts() throws {
+        let json = try encode(TalqynStartQuery())
+        XCTAssertEqual(json["limit"] as? Int, 10)
+        XCTAssertEqual(json.count, 1)
+    }
+
     func testFullSearchQueryOmitsEmptyFilters() throws {
         let bare = try encode(TalqynFullSearchQuery(query: "smartphone"))
         XCTAssertNil(bare["filters"])

@@ -208,6 +208,73 @@ extension TalqynSearchResponse: Decodable {
     }
 }
 
+/// The result of `POST /v1/search/start` — what to show under an **empty**
+/// search field.
+///
+/// Four independent blocks; any of them can come back empty. Only ``products``
+/// is ranked at all, and by popularity rather than relevance, which is why its
+/// cards carry no ``TalqynProduct/score``.
+public struct TalqynStartResponse: Sendable, Equatable {
+    /// The impression id for this screen.
+    ///
+    /// Send it back in ``TalqynProductClickEvent/searchID`` with
+    /// ``TalqynEventSource/start``: without it a card tap has no denominator and
+    /// the screen's click-through cannot be computed.
+    public var searchID: String
+
+    /// The locale the screen was built in, as its wire value.
+    public var locale: String
+
+    /// This shopper's recent queries, most recently used first.
+    ///
+    /// Empty until the token names a shopper — not under
+    /// ``TalqynDeviceIdentity/guest`` — and the storefront reports submitted
+    /// queries through ``TalqynEventsAPI/searchSubmit(_:)``: the block is
+    /// assembled from those very events.
+    public var history: [String]
+
+    /// What this storefront searches for, over the last 30 days.
+    ///
+    /// A freshly connected storefront has no traffic yet, so the block stands on
+    /// the curated corpus until it does.
+    public var popularQueries: [String]
+
+    /// Root categories carrying live products, the largest first.
+    ///
+    /// Stock and place are not applied here — the listing behind a tap applies
+    /// them itself.
+    public var categories: [TalqynCategory]
+
+    /// Popular products, by clicks over the last 30 days; a storefront without
+    /// clicks yet falls back to reviews and ratings.
+    ///
+    /// Only products in stock where the shopper is — the city or store of the
+    /// request, anywhere when it named neither.
+    public var products: [TalqynProduct]
+}
+
+extension TalqynStartResponse: Decodable {
+    private enum CodingKeys: String, CodingKey {
+        case searchID = "search_id"
+        case locale, history, categories, products
+        case popularQueries = "popular_queries"
+    }
+
+    /// Decodes a start screen, tolerating absent fields. A card that does not
+    /// decode is dropped on its own; the rest of the block stays.
+    ///
+    /// - Parameter decoder: The decoder to read from.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        searchID = container.value(.searchID, default: "")
+        locale = container.value(.locale, default: TalqynLocale.en.rawValue)
+        history = container.array(.history)
+        popularQueries = container.array(.popularQueries)
+        categories = container.array(.categories)
+        products = container.array(.products)
+    }
+}
+
 /// The result of `POST /v1/search/full` — one page of a listing.
 public struct TalqynFullSearchResponse: Sendable, Equatable {
     /// The impression id, present on the **first** page only (`offset == 0`).
