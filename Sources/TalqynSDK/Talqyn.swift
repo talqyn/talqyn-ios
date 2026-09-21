@@ -46,7 +46,7 @@ import Foundation
 /// - ``setLocale(_:)``
 /// - ``setVariant(_:)``
 public final class Talqyn: Sendable {
-    /// Instant search, listings, and the filter panel.
+    /// Instant search, the start screen, listings, and the filter panel.
     public let search: TalqynSearchAPI
 
     /// The consultant and the shopper's chat history.
@@ -209,7 +209,7 @@ public extension Talqyn {
     /// Sent with every request as `X-Talqyn-SDK`, so that a report of "search
     /// broke in the app" can be narrowed to the builds it actually broke in.
     /// Quote it when contacting Talqyn support.
-    static let version = "1.0.0"
+    static let version = "1.1.0"
 
     /// The value of the `X-Talqyn-SDK` header: platform and version.
     ///

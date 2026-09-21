@@ -30,7 +30,7 @@ alone if all you need is search — see [Installation](#installation).
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/talqyn/talqyn-ios", from: "1.0.0"),
+.package(url: "https://github.com/talqyn/talqyn-ios", from: "1.1.0"),
 // ...and in the target:
 .product(name: "TalqynUI", package: "talqyn-ios"),
 ```
@@ -94,7 +94,7 @@ the SDK's business, not the app's.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/talqyn/talqyn-ios", from: "1.0.0"),
+.package(url: "https://github.com/talqyn/talqyn-ios", from: "1.1.0"),
 ```
 
 ```swift
@@ -165,6 +165,14 @@ found.history        // the shopper's past queries (needs events, see below)
 found.correctedFrom  // set if the server quietly searched for corrected text
 found.searchID       // travels into the click event
 
+// The start screen — what to show when the field is focused and empty.
+let start = try await talqyn.search.start(TalqynStartQuery(limit: 8))
+start.history         // this shopper's recent queries (needs events, see below)
+start.popularQueries  // what the storefront searches for
+start.categories      // root categories of the catalog
+start.products        // popular products, ranked by clicks — no score, no relevance
+start.searchID        // travels into the click event, with source .start
+
 // A listing with filters and sorting, a page at a time.
 let query = TalqynFullSearchQuery(
     query: "smartphone",
@@ -184,6 +192,10 @@ panel.cityGroup          // the city picker: option.id goes into cityID
 panel.locationGroup      // the store picker: option.id goes into locationID
 panel.selectedFilters    // what is selected now, in the shape of the next request
 ```
+
+Call `start` when the field takes focus, not on every redraw: each call is billed
+as a search. Report a tap on one of its cards with `source: .start` — those clicks
+are kept out of search ranking, so that the screen cannot rank itself.
 
 `talqynID` is Talqyn's internal id and does not exist in your catalog. Everything
 you do on your side, do by `externalID` — it is optional, and whether to show a
@@ -330,9 +342,12 @@ on these three events:
 
 | Event | Report it when | Carries |
 |---|---|---|
-| `TalqynSearchSubmitEvent` | the shopper submits a query — Enter in the field, or opening a listing | the query, `source` (`.instant` or `.full`, never `.consultant`), `resultsCount` when it is known |
+| `TalqynSearchSubmitEvent` | the shopper submits a query — Enter in the field, a query picked on the start screen, or opening a listing | the query, `source` (`.instant` or `.full`, never `.consultant` or `.start`), `resultsCount` when it is known |
 | `TalqynProductClickEvent` | a product card is tapped in your own search UI | the `searchID` of the results it was shown in, `talqynID` (not your SKU), the zero-based `position`, the `source` |
-| `TalqynCategoryClickEvent` | a category from `found.categories` is tapped | the category id and the query it was shown for |
+| `TalqynCategoryClickEvent` | a category from `found.categories` or `start.categories` is tapped | the category id and the query it was shown for — none on the start screen |
+
+A query picked on the start screen is submitted like a typed one, with the source
+of the results it opens.
 
 ```swift
 talqyn.events.track(TalqynSearchSubmitEvent(
@@ -349,6 +364,9 @@ Where the `searchID` comes from:
 - **Instant search** — `found.searchID`, one per response.
 - **A listing** — `listing.searchID`, on the **first** page only: later pages
   continue the same results, so keep the id for the whole listing.
+- **The start screen** — `start.searchID`, with `source: .start`. These clicks
+  are kept out of search ranking: the screen's products are the most-clicked
+  ones, so counting them there would let it rank itself.
 - **The consultant** — the `searchID` of the turn's `products`, with
   `source: .consultant` and `position` counted across all of the turn's products.
 

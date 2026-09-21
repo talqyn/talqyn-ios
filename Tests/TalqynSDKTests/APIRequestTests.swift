@@ -6,6 +6,8 @@ import TalqynTestSupport
 final class APIRequestTests: XCTestCase {
     private let emptySearch = #"{"search_id":"s","query":"x","locale":"ru","total":0,"results":[]}"#
     private let emptyListing = #"{"query":"x","locale":"ru","offset":0,"limit":20,"sort":"relevance","total":0,"results":[]}"#
+    private let emptyStart =
+        #"{"search_id":"s","locale":"ru","history":[],"popular_queries":[],"categories":[],"products":[]}"#
 
     func testEveryRequestCarriesTheTokenAndARequestID() async throws {
         let transport = StubTransport()
@@ -47,6 +49,38 @@ final class APIRequestTests: XCTestCase {
         XCTAssertEqual(transport.sent.map(\.path), ["/v1/search/", "/v1/search/full", "/v1/search/filters"])
         XCTAssertEqual(transport.sent[0].bodyJSON["query"] as? String, "iphone")
         XCTAssertEqual(transport.sent[1].bodyJSON["sort"] as? String, "price_asc")
+    }
+
+    func testStartScreenPathAndDefaults() async throws {
+        let transport = StubTransport()
+        transport.enqueue(json: emptyStart)
+
+        let talqyn = try await TestFixtures.preparedClient(transport: transport, cityID: "10")
+        talqyn.setLocale(.kk)
+        talqyn.setVariant("exp-b")
+        _ = try await talqyn.search.start()
+
+        let sent = transport.sent[0]
+        XCTAssertEqual(sent.path, "/v1/search/start")
+        XCTAssertEqual(sent.bodyJSON["locale"] as? String, "kk")
+        XCTAssertEqual(sent.bodyJSON["city_id"] as? String, "10")
+        XCTAssertEqual(sent.bodyJSON["variant"] as? String, "exp-b")
+        XCTAssertEqual(sent.bodyJSON["limit"] as? Int, 10)
+        XCTAssertNil(sent.bodyJSON["query"])
+    }
+
+    func testStartScreenTakesAnExplicitLimitAndPlace() async throws {
+        let transport = StubTransport()
+        transport.enqueue(json: emptyStart)
+
+        let talqyn = try await TestFixtures.preparedClient(transport: transport, cityID: "10")
+        _ = try await talqyn.search.start(TalqynStartQuery(limit: 8, locationID: "5"))
+
+        XCTAssertEqual(transport.sent[0].bodyJSON["limit"] as? Int, 8)
+        XCTAssertEqual(transport.sent[0].bodyJSON["location_id"] as? String, "5")
+        // A store beats a city: the default city must not tag along with an
+        // explicit store.
+        XCTAssertNil(transport.sent[0].bodyJSON["city_id"])
     }
 
     func testListingWithFiltersSendsSameCriteria() async throws {

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Instant search, listings, and the filter panel.
+/// Instant search, the start screen, listings, and the filter panel.
 ///
 /// Requires the `search` scope, which every device token carries. Reached
 /// through ``Talqyn/search``.
@@ -48,6 +48,34 @@ public final class TalqynSearchAPI: Sendable {
     /// - Throws: ``TalqynError``.
     public func search(_ text: String, limit: Int = 20) async throws -> TalqynSearchResponse {
         try await search(TalqynSearchQuery(query: text, limit: limit))
+    }
+
+    /// Fetches the start screen of an empty search field:
+    /// `POST /v1/search/start`.
+    ///
+    /// What to show when the shopper focuses the field and has typed nothing:
+    /// their recent queries, what the storefront searches for, the catalog's root
+    /// categories, and popular products. This is not `search("")` — an empty
+    /// query has no vector and no prefix, so ranking, completions, and correction
+    /// are all off, and the answer carries popularity instead of relevance.
+    ///
+    /// Report card taps through ``TalqynEventsAPI/productClick(_:)`` with
+    /// ``TalqynEventSource/start`` and the response's
+    /// ``TalqynStartResponse/searchID``, the way you would for search results.
+    ///
+    /// - Important: Each call is billed as a search, so call it when the field
+    ///   takes focus rather than on every redraw.
+    ///
+    /// - Parameter query: How many products to return and where the shopper is.
+    ///   Everything is optional.
+    /// - Returns: The screen's four blocks and the impression id for its cards.
+    /// - Throws: ``TalqynError`` — commonly
+    ///   ``TalqynError/rateLimited(retryAfter:detail:requestID:)`` when the
+    ///   search bucket is exhausted.
+    public func start(_ query: TalqynStartQuery = TalqynStartQuery()) async throws -> TalqynStartResponse {
+        var query = query
+        defaults.apply(to: &query)
+        return try await client.send(path: "search/start", body: query)
     }
 
     /// Fetches one page of a listing: `POST /v1/search/full`.

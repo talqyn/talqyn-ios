@@ -116,6 +116,86 @@ extension TalqynSearchQuery: Encodable {
     }
 }
 
+/// A request for the start screen (`POST /v1/search/start`): what to show under
+/// an **empty** search field.
+///
+/// There is no `query` property, and that is the point — an empty query is not a
+/// query. It has neither a vector nor a prefix, so ranking, completions, and
+/// correction are all off, and the response carries popularity rather than
+/// relevance. Hence its own endpoint and its own request.
+///
+/// Fields left `nil` are filled from ``TalqynConfiguration`` — locale, place, and
+/// A/B bucket.
+public struct TalqynStartQuery: Sendable, Equatable {
+    /// The language to build the screen in. `nil` uses the client default.
+    public var locale: TalqynLocale?
+
+    /// How many products to return. 1–50.
+    ///
+    /// Applies to ``TalqynStartResponse/products`` only: the other blocks are
+    /// fixed in size by the server — 5 past queries, 8 popular ones, 8
+    /// categories.
+    public var limit: Int
+
+    /// The shopper's city — the `id` of an option in the `city` group of
+    /// ``TalqynSearchAPI/filters(_:)``.
+    ///
+    /// Products unavailable there are left out of the block rather than shown as
+    /// out of stock.
+    public var cityID: String?
+
+    /// The shopper's store — the `id` of an option in the `location` group.
+    /// Takes precedence over ``cityID``.
+    public var locationID: String?
+
+    /// The storefront's A/B bucket: echoed into analytics, no effect on the
+    /// screen.
+    public var variant: String?
+
+    /// Creates a start-screen request.
+    ///
+    /// - Parameters:
+    ///   - locale: The language to build the screen in. `nil` uses the client
+    ///     default.
+    ///   - limit: How many products to return, 1–50.
+    ///   - cityID: The shopper's city, in your catalog's numbering.
+    ///   - locationID: The shopper's store, in your catalog's numbering.
+    ///   - variant: The storefront's A/B bucket.
+    public init(
+        locale: TalqynLocale? = nil,
+        limit: Int = 10,
+        cityID: String? = nil,
+        locationID: String? = nil,
+        variant: String? = nil
+    ) {
+        self.locale = locale
+        self.limit = limit
+        self.cityID = cityID
+        self.locationID = locationID
+        self.variant = variant
+    }
+}
+
+extension TalqynStartQuery: Encodable {
+    private enum CodingKeys: String, CodingKey {
+        case locale, limit, variant
+        case cityID = "city_id"
+        case locationID = "location_id"
+    }
+
+    /// Encodes the request, omitting every field left unset.
+    ///
+    /// - Parameter encoder: The encoder to write into.
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(locale, forKey: .locale)
+        try container.encode(limit, forKey: .limit)
+        try container.encodeIfPresent(cityID, forKey: .cityID)
+        try container.encodeIfPresent(locationID, forKey: .locationID)
+        try container.encodeIfPresent(variant, forKey: .variant)
+    }
+}
+
 /// The selection criteria shared by a listing and its filter panel.
 ///
 /// They are shared on the server too: `/v1/search/full` and `/v1/search/filters`

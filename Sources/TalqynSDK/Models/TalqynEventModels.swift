@@ -9,13 +9,21 @@ public enum TalqynEventSource: String, Sendable, Codable {
     /// The consultant's results. Not valid for
     /// ``TalqynSearchSubmitEvent/source``.
     case consultant = "cip"
+    /// The start screen of an empty search field — ``TalqynSearchAPI/start(_:)``.
+    /// Not valid for ``TalqynSearchSubmitEvent/source``: the screen has no query
+    /// to submit.
+    ///
+    /// A tap here is counted apart from the rest on purpose. The screen's own
+    /// products come from the most-clicked list, so feeding these clicks back
+    /// would let it rank itself; they stay out of search ranking entirely.
+    case start
 }
 
 /// A shopper tapped a product card.
 public struct TalqynProductClickEvent: Sendable, Equatable {
     /// The impression the click belongs to — ``TalqynSearchResponse/searchID``,
-    /// ``TalqynFullSearchResponse/searchID``, or
-    /// ``TalqynConsultantProducts/searchID``.
+    /// ``TalqynFullSearchResponse/searchID``, ``TalqynStartResponse/searchID``,
+    /// or ``TalqynConsultantProducts/searchID``.
     ///
     /// Without it a click has no denominator and click-through cannot be
     /// computed. A click from deep pagination legitimately arrives without one,
@@ -82,16 +90,17 @@ extension TalqynProductClickEvent: Encodable {
 
 /// A shopper submitted a search query.
 ///
-/// Not optional analytics: the `history` block of an instant-search response is
-/// assembled from these rows. A storefront running on a device token has to
-/// report them itself — by definition there is no backend of yours in the chain
-/// to do it.
+/// Not optional analytics: the `history` blocks of instant search and of the
+/// start screen are assembled from these rows. A storefront running on a device
+/// token has to report them itself — by definition there is no backend of yours
+/// in the chain to do it.
 public struct TalqynSearchSubmitEvent: Sendable, Equatable {
     /// The query as submitted. 1–500 characters.
     public var query: String
 
     /// Where it was submitted from. Only ``TalqynEventSource/instant`` and
-    /// ``TalqynEventSource/full`` are accepted.
+    /// ``TalqynEventSource/full`` are accepted: a query picked on the start
+    /// screen takes the source of the results it opens.
     public var source: TalqynEventSource
 
     /// The language searched in. Filled from the client default when `nil`.
@@ -145,12 +154,14 @@ extension TalqynSearchSubmitEvent: Encodable {
     }
 }
 
-/// A shopper tapped a category in the navigation block of a search response.
+/// A shopper tapped a category — in a search response's navigation block or on
+/// the start screen.
 public struct TalqynCategoryClickEvent: Sendable, Equatable {
     /// The category tapped — ``TalqynCategory/id``.
     public var categoryID: Int
 
-    /// The query whose results the category appeared in.
+    /// The query whose results the category appeared in. `nil` on the start
+    /// screen, which has no query.
     public var query: String?
 
     /// The storefront's A/B bucket. Filled from the client default when `nil`.
