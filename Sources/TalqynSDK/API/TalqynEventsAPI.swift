@@ -4,11 +4,11 @@ import Foundation
 ///
 /// Requires the `events` scope. Reached through ``Talqyn/events``.
 ///
-/// Not analytics for its own sake: the `history` block of an instant-search
-/// response and the denominator of click-through are both assembled from these
-/// rows. The storefront has to report them itself — by definition there is no
-/// backend of yours in the chain to do it. An event is attributed to the
-/// shopper the device token names.
+/// Not analytics for its own sake: the denominator of click-through and the
+/// `history` blocks of instant search and of the start screen are all
+/// assembled from these rows. The storefront has to report them itself — by
+/// definition there is no backend of yours in the chain to do it. An event is
+/// attributed to the shopper the device token names.
 public final class TalqynEventsAPI: Sendable {
     private let client: TalqynAPIClient
     private let defaults: TalqynDefaultsBox
@@ -46,8 +46,8 @@ public final class TalqynEventsAPI: Sendable {
         try await client.send(path: "events/search", body: event, safety: .onlyIfRejected)
     }
 
-    /// Reports a category tap in the navigation block:
-    /// `POST /v1/events/category-click`.
+    /// Reports a category tap — in a search response's navigation block or on
+    /// the start screen: `POST /v1/events/category-click`.
     ///
     /// - Parameter event: Which category was tapped and from which query.
     /// - Throws: ``TalqynError``. Use `track(_:)` to fire and forget.

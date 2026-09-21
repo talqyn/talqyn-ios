@@ -342,9 +342,12 @@ on these three events:
 
 | Event | Report it when | Carries |
 |---|---|---|
-| `TalqynSearchSubmitEvent` | the shopper submits a query — Enter in the field, or opening a listing | the query, `source` (`.instant` or `.full`, never `.consultant`), `resultsCount` when it is known |
+| `TalqynSearchSubmitEvent` | the shopper submits a query — Enter in the field, a query picked on the start screen, or opening a listing | the query, `source` (`.instant` or `.full`, never `.consultant` or `.start`), `resultsCount` when it is known |
 | `TalqynProductClickEvent` | a product card is tapped in your own search UI | the `searchID` of the results it was shown in, `talqynID` (not your SKU), the zero-based `position`, the `source` |
-| `TalqynCategoryClickEvent` | a category from `found.categories` is tapped | the category id and the query it was shown for |
+| `TalqynCategoryClickEvent` | a category from `found.categories` or `start.categories` is tapped | the category id and the query it was shown for — none on the start screen |
+
+A query picked on the start screen is submitted like a typed one, with the source
+of the results it opens.
 
 ```swift
 talqyn.events.track(TalqynSearchSubmitEvent(

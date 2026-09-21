@@ -46,7 +46,7 @@ import Foundation
 /// - ``setLocale(_:)``
 /// - ``setVariant(_:)``
 public final class Talqyn: Sendable {
-    /// Instant search, listings, and the filter panel.
+    /// Instant search, the start screen, listings, and the filter panel.
     public let search: TalqynSearchAPI
 
     /// The consultant and the shopper's chat history.

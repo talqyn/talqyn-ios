@@ -55,7 +55,7 @@ extension TalqynChip: Decodable {
     }
 }
 
-/// A category in the navigation block of a search response.
+/// A category to navigate to — from a search response or the start screen.
 public struct TalqynCategory: Sendable, Equatable, Hashable, Identifiable {
     /// The category id, as accepted by the `categoryID` request parameter.
     public var id: Int

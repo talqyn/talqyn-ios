@@ -37,8 +37,8 @@ final class QueryEncodingTests: XCTestCase {
         XCTAssertEqual(json["limit"] as? Int, 8)
         XCTAssertEqual(json["city_id"] as? String, "10")
         XCTAssertEqual(json["variant"] as? String, "b")
-        // An empty query is not a query: the endpoint has no such field, and
-        // sending one would be a 422.
+        // Not search(""): the endpoint takes no query, and an empty one is a
+        // 422 on instant search.
         XCTAssertNil(json["query"])
         XCTAssertNil(json["location_id"])
     }
