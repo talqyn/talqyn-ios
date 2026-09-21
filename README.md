@@ -30,7 +30,7 @@ alone if all you need is search — see [Installation](#installation).
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/talqyn/talqyn-ios", from: "1.0.0"),
+.package(url: "https://github.com/talqyn/talqyn-ios", from: "1.1.0"),
 // ...and in the target:
 .product(name: "TalqynUI", package: "talqyn-ios"),
 ```
@@ -94,7 +94,7 @@ the SDK's business, not the app's.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/talqyn/talqyn-ios", from: "1.0.0"),
+.package(url: "https://github.com/talqyn/talqyn-ios", from: "1.1.0"),
 ```
 
 ```swift

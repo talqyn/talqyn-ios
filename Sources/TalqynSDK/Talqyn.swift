@@ -209,7 +209,7 @@ public extension Talqyn {
     /// Sent with every request as `X-Talqyn-SDK`, so that a report of "search
     /// broke in the app" can be narrowed to the builds it actually broke in.
     /// Quote it when contacting Talqyn support.
-    static let version = "1.0.0"
+    static let version = "1.1.0"
 
     /// The value of the `X-Talqyn-SDK` header: platform and version.
     ///
