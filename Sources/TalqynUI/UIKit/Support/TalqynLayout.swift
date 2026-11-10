@@ -49,6 +49,17 @@ extension UIView {
         isHidden = hidden
     }
 
+    /// Brings a view that has just been shown in from transparent: for what
+    /// appears on its own, under the shopper's eyes, rather than by their
+    /// doing. Under reduce motion it is simply there.
+    @MainActor func talqynFadeIn() {
+        guard TalqynMotion.animates(), window != nil else { return }
+        alpha = 0
+        UIView.animate(
+            withDuration: 0.25, delay: 0, options: [.curveEaseOut, .allowUserInteraction, .beginFromCurrentState]
+        ) { self.alpha = 1 }
+    }
+
     /// Rounds the corners; `continuous` for the softer, iOS-native curve.
     func talqynRound(_ radius: CGFloat, corners: CACornerMask? = nil) {
         layer.cornerRadius = radius
@@ -67,6 +78,7 @@ extension UIStackView {
         stack.spacing = spacing
         if horizontalMargin > 0 {
             stack.isLayoutMarginsRelativeArrangement = true
+            stack.insetsLayoutMarginsFromSafeArea = false
             stack.directionalLayoutMargins = NSDirectionalEdgeInsets(
                 top: 0, leading: horizontalMargin, bottom: 0, trailing: horizontalMargin
             )

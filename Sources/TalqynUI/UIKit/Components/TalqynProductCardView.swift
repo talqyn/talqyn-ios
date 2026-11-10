@@ -106,7 +106,7 @@ final class TalqynRatingView: UIView {
 /// under the price; a product the response said nothing about is shown as
 /// usual.
 final class TalqynProductCardView: TalqynTappableView, TalqynProductCard {
-    enum Layout {
+    enum Layout: Hashable {
         /// Image on the left, details on the right. Full width.
         case row
         /// Image over details, at the carousel's fixed width.
@@ -260,6 +260,10 @@ final class TalqynProductCardView: TalqynTappableView, TalqynProductCard {
             let width = widthAnchor.constraint(equalToConstant: Self.compactWidth(theme))
             width.isActive = true
             compactWidth = width
+            let slack = UIView()
+            slack.setContentHuggingPriority(.defaultLow - 1, for: .vertical)
+            details.insertArrangedSubview(slack, at: 1)
+            details.setCustomSpacing(0, after: titleLabel)
         case .tile:
             content.axis = .vertical
             content.spacing = 6
@@ -380,7 +384,7 @@ final class TalqynCompactProductRowView: UIView {
         scrollView.showsHorizontalScrollIndicator = false
         stack.axis = .horizontal
         stack.spacing = 10
-        stack.alignment = .top
+        stack.alignment = .fill
         talqynPin(scrollView)
         scrollView.addSubview(stack)
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -401,15 +405,28 @@ final class TalqynCompactProductRowView: UIView {
         cards factory: TalqynProductCardFactory,
         onTap: @escaping (TalqynProduct) -> Void
     ) {
+        let wanted = Set(products.map(\.talqynID))
         var reusable: [Int: TalqynProductCard] = [:]
-        for card in cards { reusable[card.id] = card.view }
-        stack.talqynRemoveAllArranged()
+        var unclaimed: [TalqynProductCard] = []
+        for card in cards {
+            if wanted.contains(card.id), reusable[card.id] == nil {
+                reusable[card.id] = card.view
+            } else {
+                unclaimed.append(card.view)
+            }
+        }
+        let previous = cards.map(\.view)
         cards = products.map { product in
-            let card = factory.card(for: product, layout: .compact, reusing: reusable[product.talqynID])
+            let card = factory.card(
+                for: product, layout: .compact, reusing: reusable[product.talqynID] ?? unclaimed.popLast()
+            )
             card.onTap = { onTap(product) }
             return (card, product.talqynID)
         }
-        cards.forEach { stack.addArrangedSubview($0.view) }
+        let current = cards.map(\.view)
+        guard current.count != previous.count || !zip(current, previous).allSatisfy({ $0 === $1 }) else { return }
+        stack.talqynRemoveAllArranged()
+        current.forEach { stack.addArrangedSubview($0) }
     }
 }
 

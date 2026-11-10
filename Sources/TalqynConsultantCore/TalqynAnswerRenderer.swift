@@ -141,6 +141,22 @@ public enum TalqynAnswerRenderer {
         return blocks
     }
 
+    /// The products an answer's markers name, in order of appearance, each
+    /// once — whether or not the conversation has them.
+    ///
+    /// What a rendered answer depends on besides its text: a view that caches
+    /// the rendering knows by these when it is stale.
+    ///
+    /// - Parameter text: The answer text, markers included.
+    public static func citedProductIDs(in text: String) -> [Int] {
+        let ns = text as NSString
+        var seen = Set<Int>()
+        return bareMarkerPattern.matches(in: text, range: NSRange(location: 0, length: ns.length)).compactMap { match in
+            guard let id = Int(ns.substring(with: match.range(at: 1))), seen.insert(id).inserted else { return nil }
+            return id
+        }
+    }
+
     /// Removes every `[p:ID]` marker, keeping the text.
     ///
     /// - Parameter text: The answer text.

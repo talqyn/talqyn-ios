@@ -18,6 +18,10 @@ final class TalqynClarifyCardView: UIView {
     private var clarify: TalqynClarify?
     private var draft = TalqynClarifyDraft()
     private var chipsWidth: CGFloat = 0
+    /// The chips on show, with what each stands for.
+    private var chips: [(question: TalqynClarify.Question, option: String, chip: TalqynChipView)] = []
+    private var builtClarify: TalqynClarify?
+    private var builtWidth: CGFloat = 0
     private var onDraftChange: ((TalqynClarifyDraft) -> Void)?
     private var onSubmit: ((String) -> Void)?
 
@@ -67,11 +71,26 @@ final class TalqynClarifyCardView: UIView {
         rebuildQuestions()
     }
 
+    /// Brings the chips in line with the draft.
+    ///
+    /// The chips are built once per question set and then only told whether
+    /// they are selected: the card is configured on every pass of the screen,
+    /// and a chip replaced under a tap — or under VoiceOver's cursor — is a
+    /// chip that lost its place.
     private func rebuildQuestions() {
         guard let clarify else { return }
-        questionsStack.talqynRemoveAllArranged()
-        for question in clarify.questions {
-            questionsStack.addArrangedSubview(makeQuestionSection(question))
+        if clarify != builtClarify || chipsWidth != builtWidth {
+            builtClarify = clarify
+            builtWidth = chipsWidth
+            chips = []
+            questionsStack.talqynRemoveAllArranged()
+            for question in clarify.questions {
+                questionsStack.addArrangedSubview(makeQuestionSection(question))
+            }
+        }
+        for entry in chips {
+            let isSelected = draft.isSelected(entry.option, in: entry.question)
+            if entry.chip.isSelected != isSelected { entry.chip.isSelected = isSelected }
         }
         submitButton.isEnabled = !draft.answer(for: clarify.questions).isEmpty
     }
@@ -89,6 +108,7 @@ final class TalqynClarifyCardView: UIView {
         chipsView.setChips(question.options.map { option in
             let chip = TalqynChipView(theme: theme, title: option, isSelected: draft.isSelected(option, in: question))
             chip.onTap = { [weak self] in self?.toggle(option, in: question) }
+            chips.append((question, option, chip))
             return chip
         })
         return UIStackView.talqynVertical([label, chipsView], spacing: 8)

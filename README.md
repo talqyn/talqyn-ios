@@ -30,7 +30,7 @@ alone if all you need is search — see [Installation](#installation).
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/talqyn/talqyn-ios", from: "1.1.0"),
+.package(url: "https://github.com/talqyn/talqyn-ios", from: "1.2.0"),
 // ...and in the target:
 .product(name: "TalqynUI", package: "talqyn-ios"),
 ```
@@ -94,7 +94,7 @@ the SDK's business, not the app's.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/talqyn/talqyn-ios", from: "1.1.0"),
+.package(url: "https://github.com/talqyn/talqyn-ios", from: "1.2.0"),
 ```
 
 ```swift
@@ -133,13 +133,18 @@ The shopper id has to survive an app restart: chat history rests on it.
 When the shopper signs in or out, tell the client:
 
 ```swift
-await talqyn.setIdentity(.user(accountUUID))     // signed in: history follows the account
+await talqyn.setIdentity(.user(accountID))       // signed in: history follows the account
 await talqyn.setIdentity(.persistentAnonymous)   // back to this device's anonymous shopper
 await talqyn.setIdentity(.guest)                 // no history is kept; the consultant still works
 ```
 
-For a signed-in shopper, pass the same UUID every time — the account's id from
-your backend, say. Skip the call when the account changes, and the next
+For a signed-in shopper, pass the same id every time — the account's id from
+your backend, in your own format: a `UUID`, or a `String` of 1 to 128 characters
+of `[A-Za-z0-9._:-]`. Nobody confirms this id, so a shopper's history is
+protected only by the id being impossible to guess, and that is yours to ensure:
+a random id (a UUID, an opaque account id) is fine, an enumerable one such as a
+CRM number lets anyone who substitutes it read another shopper's chats — map it
+to a random id first. Skip the call when the account changes, and the next
 conversation lands in the previous shopper's history.
 
 ### Defaults
@@ -453,8 +458,9 @@ What you can set:
 | `strings:` | the en/ru/kk copy, any line replaceable: `var s = TalqynUIStrings.en; s.placeholder = "…"` |
 | `showsHeader:` | `false` keeps your own navigation bar; "new conversation" is then `conversation.reset()`, and history is `TalqynChatHistoryViewController` |
 | `showsPoweredBy:` | `false` removes "Powered by Talqyn" from the empty screen |
+| `showsHistory:` | `false` removes the history button from the header — for a shopper who is not signed in. Also a property: `screen.showsHistory = isSignedIn` as the state changes. Under `.guest` the button is hidden by itself: a guest has no history |
 | `priceFormatter:` | `449 990 ₸` by default |
-| `imageLoader:` | your app's image cache and pipeline in place of the SDK's |
+| `imageLoader:` | your app's image cache and pipeline in place of the SDK's. The SDK's own keeps a picture at the size the screens draw (600 px on the longest side); `TalqynURLImageLoader(maxPixelSize:)` changes the bound |
 | `conversation:` | `TalqynConsultantViewController(conversation:)` takes a conversation of your own — to put a question into the field (`conversation.draft = "…"`) or keep the transcript when the screen closes |
 
 - **Your own product cards.** `cardViewFor:layout:` (`cardView:` in SwiftUI) returns

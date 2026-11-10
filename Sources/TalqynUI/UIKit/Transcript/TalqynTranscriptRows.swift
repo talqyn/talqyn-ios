@@ -92,10 +92,17 @@ final class TalqynTranscriptRowBuilder {
     /// first, and the products that did come can still miss.
     private static let fallbackReasons: [TalqynFeedbackReason] = [.noAnswer, .notRelevant, .other]
 
+    /// A turn's rendered answer, with what it was rendered from: the text,
+    /// and the products its markers resolved to at the time.
+    ///
+    /// The products are the cited ones only. Keyed by the size of the whole
+    /// conversation's catalog, as it once was, every answer went stale each
+    /// time a new turn brought its products, and a long chat was rendered
+    /// again from the top whenever an answer settled.
     private struct CacheEntry {
         let text: String
-        let productsCount: Int
-        let catalogCount: Int
+        let citedIDs: [Int]
+        let cited: [TalqynProduct?]
         let blocks: [TalqynTurnRow.Block]
         let copyText: String
     }
@@ -188,8 +195,7 @@ final class TalqynTranscriptRowBuilder {
     ) -> (blocks: [TalqynTurnRow.Block], copyText: String) {
         if let entry = cache[turn.id],
            entry.text == turn.text,
-           entry.productsCount == turn.products.count,
-           entry.catalogCount == catalog.count {
+           entry.citedIDs.map({ catalog[$0] }) == entry.cited {
             return (entry.blocks, entry.copyText)
         }
         let rendered = TalqynAnswerRenderer.blocks(text: turn.text, products: catalog)
@@ -206,8 +212,9 @@ final class TalqynTranscriptRowBuilder {
             }
         }
         let copyText = TalqynAnswerRenderer.plainText(of: rendered)
+        let citedIDs = TalqynAnswerRenderer.citedProductIDs(in: turn.text)
         cache[turn.id] = CacheEntry(
-            text: turn.text, productsCount: turn.products.count, catalogCount: catalog.count,
+            text: turn.text, citedIDs: citedIDs, cited: citedIDs.map { catalog[$0] },
             blocks: blocks, copyText: copyText
         )
         return (blocks, copyText)
@@ -318,7 +325,7 @@ protocol TalqynTurnViewDelegate: AnyObject {
     func turnDidTapRetry(turnID: UUID)
     func turnDidTapRedirect(query: String)
     func turnDidTapFilters(_ filters: TalqynActionFilters, question: String)
-    func turnDidTapComparison(_ table: TalqynComparisonTable)
+    func turnDidTapComparison(_ table: TalqynComparisonTable, turnID: UUID)
     func turnDidSubmitClarify(answer: String, turnID: UUID)
     func turnDidUpdateClarifyDraft(_ draft: TalqynClarifyDraft, turnID: UUID)
     func turnDidTapSuggestion(_ text: String)

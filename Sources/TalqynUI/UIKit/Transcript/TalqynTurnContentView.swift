@@ -41,6 +41,17 @@ final class TalqynTurnContentView: UIView, UITextViewDelegate {
 
     private var lastTextByID: [Int: String] = [:]
     private var lastProductIDsByID: [Int: [Int]] = [:]
+
+    /// Views a previous turn was drawn with, kept for the next one.
+    ///
+    /// A cell is handed another turn every time one scrolls into view, and
+    /// what a turn costs is mostly the making of its views: a text view is
+    /// five times cheaper to hand new text than to create, a card six times.
+    /// Thrown away with the turn, they made every turn that entered the
+    /// screen cost two or three frames.
+    private var spareTextViews: [UITextView] = []
+    private var spareCards: [TalqynProductCardView.Layout: [TalqynProductCard]] = [:]
+    private let spareLimit = 12
     private var availableWidth: CGFloat = 0
     private var turnID: UUID?
     private var catalog: [Int: TalqynProduct] = [:]
@@ -72,11 +83,16 @@ final class TalqynTurnContentView: UIView, UITextViewDelegate {
         catalog = [:]
         lastTextByID = [:]
         lastProductIDsByID = [:]
-        blocksStack.talqynRemoveAllArranged()
-        actionsStack.talqynRemoveAllArranged()
+        blocksStack.arrangedSubviews.forEach(retire)
         statusLineView.talqynSetHidden(true)
         typingIndicatorView.setActive(false)
         toolbarView.reset()
+        productListView.talqynSetHidden(true)
+        followUpGroup.talqynSetHidden(true)
+        for view in [productListView, followUpGroup] {
+            view.layer.removeAllAnimations()
+            view.alpha = 1
+        }
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -89,6 +105,10 @@ final class TalqynTurnContentView: UIView, UITextViewDelegate {
     }
 
     func update(row: TalqynTurnRow, delegate: TalqynTurnViewDelegate?, availableWidth: CGFloat) {
+        let isSameTurn = turnID == row.turnID
+        let hadProductList = !productListView.isHidden
+        let hadFollowUp = !followUpGroup.isHidden
+
         self.delegate = delegate
         self.availableWidth = availableWidth - Self.horizontalMargin(theme) * 2
         turnID = row.turnID
@@ -146,6 +166,11 @@ final class TalqynTurnContentView: UIView, UITextViewDelegate {
             actionsStack.isHidden && clarifyCardView.isHidden && clarifyAnsweredView.isHidden
                 && redirectNoticeView.isHidden && noticeView.isHidden && toolbarView.isHidden
         )
+
+        if isSameTurn {
+            if !hadProductList, !productListView.isHidden { productListView.talqynFadeIn() }
+            if !hadFollowUp, !followUpGroup.isHidden { followUpGroup.talqynFadeIn() }
+        }
     }
 
     /// Cards for this update: the app's where its delegate draws them,
@@ -180,25 +205,34 @@ final class TalqynTurnContentView: UIView, UITextViewDelegate {
 
     // MARK: - Slots
 
+    /// The chips are kept and told what they stand for now: a turn's actions
+    /// rarely change, and the turn is updated many times a second.
     private func updateActions(_ row: TalqynTurnRow) {
-        actionsStack.talqynRemoveAllArranged()
-        for action in row.actions {
+        var chips = actionsStack.arrangedSubviews.compactMap { $0 as? TalqynActionChipView }
+        while chips.count > row.actions.count {
+            let chip = chips.removeLast()
+            actionsStack.removeArrangedSubview(chip)
+            chip.removeFromSuperview()
+        }
+        while chips.count < row.actions.count {
+            let chip = TalqynActionChipView(theme: theme)
+            actionsStack.addArrangedSubview(chip)
+            chips.append(chip)
+        }
+        let turnID = row.turnID
+        for (chip, action) in zip(chips, row.actions) {
             switch action {
             case let .filters(filters, summary):
-                let view = TalqynActionChipView(theme: theme)
-                view.configure(icon: theme.icons.filters, title: strings.applyFilters, summary: summary) { [weak self] in
+                chip.configure(icon: theme.icons.filters, title: strings.applyFilters, summary: summary) { [weak self] in
                     self?.delegate?.turnDidTapFilters(filters, question: row.question)
                 }
-                actionsStack.addArrangedSubview(view)
             case let .comparison(table, summary):
-                let view = TalqynActionChipView(theme: theme)
-                view.configure(icon: theme.icons.comparison, title: strings.openComparison, summary: summary) { [weak self] in
-                    self?.delegate?.turnDidTapComparison(table)
+                chip.configure(icon: theme.icons.comparison, title: strings.openComparison, summary: summary) { [weak self] in
+                    self?.delegate?.turnDidTapComparison(table, turnID: turnID)
                 }
-                actionsStack.addArrangedSubview(view)
             }
         }
-        actionsStack.talqynSetHidden(actionsStack.arrangedSubviews.isEmpty)
+        actionsStack.talqynSetHidden(chips.isEmpty)
     }
 
     private func updateClarify(_ row: TalqynTurnRow) {
@@ -249,19 +283,48 @@ final class TalqynTurnContentView: UIView, UITextViewDelegate {
                 j += 1; insertionIndex += 1
             } else {
                 let view = existing[i]
-                blocksStack.removeArrangedSubview(view)
-                view.removeFromSuperview()
                 lastTextByID[view.tag] = nil
                 lastProductIDsByID[view.tag] = nil
+                retire(view)
                 i += 1
             }
+        }
+    }
+
+    /// Takes a block's view out of the turn and keeps what the next turn can
+    /// use: the text view, or the cards of a products block.
+    private func retire(_ view: UIView) {
+        blocksStack.removeArrangedSubview(view)
+        view.removeFromSuperview()
+        if let textView = view as? UITextView {
+            guard spareTextViews.count < spareLimit else { return }
+            textView.selectedTextRange = nil
+            spareTextViews.append(textView)
+        } else if let stack = view as? UIStackView {
+            cards(in: stack).forEach(retireCard)
+            stack.talqynRemoveAllArranged()
+        }
+    }
+
+    private func retireCard(_ card: TalqynProductCard) {
+        card.removeFromSuperview()
+        card.onTap = nil
+        guard spareCards[card.layout, default: []].count < spareLimit else { return }
+        spareCards[card.layout, default: []].append(card)
+    }
+
+    /// The cards of a products block: its rows, or the two tiles of a pair.
+    private func cards(in stack: UIStackView) -> [TalqynProductCard] {
+        stack.arrangedSubviews.flatMap { view -> [TalqynProductCard] in
+            if let card = view as? TalqynProductCard { return [card] }
+            return ((view as? UIStackView)?.arrangedSubviews ?? []).compactMap { $0 as? TalqynProductCard }
         }
     }
 
     private func makeBlockView(_ block: TalqynTurnRow.Block, turnID: UUID) -> UIView {
         switch block {
         case let .text(id, content, plain):
-            let textView = TalqynAnswerText.makeTextView(theme: theme)
+            let textView = spareTextViews.popLast() ?? TalqynAnswerText.makeTextView(theme: theme)
             textView.delegate = self
             textView.tag = id
             textView.attributedText = content
@@ -294,19 +357,29 @@ final class TalqynTurnContentView: UIView, UITextViewDelegate {
     /// Cards cited by one sentence. Two products — a comparison, most of the
     /// time — sit side by side as tiles, so the paragraph is not split by a
     /// column of rows; one, or three and more, stack as rows.
+    ///
+    /// A product keeps the card it had; a new one takes a card some other
+    /// product left behind — in this block, or in a turn the cell showed
+    /// before — rather than a new one.
     private func fillCards(_ stack: UIStackView, items: [TalqynProduct], turnID: UUID) {
         var reusable: [Int: TalqynProductCard] = [:]
-        for view in stack.arrangedSubviews {
-            for case let card as TalqynProductCard in [view] + ((view as? UIStackView)?.arrangedSubviews ?? []) {
-                if let id = card.product?.talqynID { reusable[id] = card }
+        var unclaimed: [TalqynProductCard] = []
+        let wanted = Set(items.map(\.talqynID))
+        for card in cards(in: stack) {
+            if let id = card.product?.talqynID, wanted.contains(id), reusable[id] == nil {
+                reusable[id] = card
+            } else {
+                unclaimed.append(card)
             }
         }
         stack.talqynRemoveAllArranged()
+        unclaimed.forEach(retireCard)
 
         let factory = cardFactory
         let layout: TalqynProductCardView.Layout = items.count == 2 ? .tile : .row
         let cards = items.map { item -> UIView in
-            let card = factory.card(for: item, layout: layout, reusing: reusable[item.talqynID])
+            let previous = reusable[item.talqynID] ?? spareCards[layout]?.popLast()
+            let card = factory.card(for: item, layout: layout, reusing: previous)
             card.onTap = { [weak self] in self?.delegate?.turnDidTapProduct(item, turnID: turnID) }
             return card
         }

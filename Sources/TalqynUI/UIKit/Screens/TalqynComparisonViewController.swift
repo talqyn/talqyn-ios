@@ -63,7 +63,8 @@ public final class TalqynComparisonViewController: UIViewController {
     private let price: TalqynPriceFormatter
     private let loader: TalqynImageLoading
     private let model: Model
-    private let onOpenProduct: (TalqynProduct) -> Void
+    /// What a tap on a product's header leads to, once the screen is gone.
+    let onOpenProduct: (TalqynProduct) -> Void
 
     private let titleLabel = UILabel()
     private let closeButton = TalqynHitAreaButton(type: .system)
@@ -121,6 +122,17 @@ public final class TalqynComparisonViewController: UIViewController {
         configureUI()
         productsScrollView.delegate = self
         tableView.valuesScrollView.delegate = self
+    }
+
+    /// The table measures its rows in the fonts of the moment it is built: a
+    /// new text size is a new table.
+    override public func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard isViewLoaded,
+              previousTraitCollection?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory
+        else { return }
+        laidOutWidth = 0
+        view.setNeedsLayout()
     }
 
     /// The columns share the width, so they are laid out again whenever it
@@ -245,22 +257,30 @@ public final class TalqynComparisonViewController: UIViewController {
         productsStack.translatesAutoresizingMaskIntoConstraints = false
         tableView.translatesAutoresizingMaskIntoConstraints = false
 
+        let centeredTitle = titleLabel.centerXAnchor.constraint(equalTo: header.centerXAnchor)
+        centeredTitle.priority = .defaultHigh
+        differencesButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
         let margin = theme.metrics.horizontalMargin
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             header.heightAnchor.constraint(equalToConstant: 56),
-            titleLabel.centerXAnchor.constraint(equalTo: header.centerXAnchor),
+            centeredTitle,
             titleLabel.centerYAnchor.constraint(equalTo: header.centerYAnchor),
             titleLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 160),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -4),
             closeButton.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -6),
             closeButton.centerYAnchor.constraint(equalTo: header.centerYAnchor),
             closeButton.widthAnchor.constraint(equalToConstant: 44),
             closeButton.heightAnchor.constraint(equalToConstant: 44),
             differencesButton.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: margin),
             differencesButton.centerYAnchor.constraint(equalTo: header.centerYAnchor),
-            differencesButton.trailingAnchor.constraint(lessThanOrEqualTo: titleLabel.leadingAnchor, constant: -8),
+            model.hasDifferences
+                ? differencesButton.trailingAnchor.constraint(lessThanOrEqualTo: titleLabel.leadingAnchor, constant: -8)
+                : differencesButton.widthAnchor.constraint(equalToConstant: 0),
             navDivider.topAnchor.constraint(equalTo: header.bottomAnchor),
             navDivider.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             navDivider.trailingAnchor.constraint(equalTo: view.trailingAnchor),

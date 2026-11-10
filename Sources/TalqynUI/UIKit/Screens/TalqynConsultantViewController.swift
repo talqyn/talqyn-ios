@@ -130,6 +130,24 @@ public final class TalqynConsultantViewController: UIViewController {
     /// Whether the empty screen carries "Powered by Talqyn" under the examples.
     public let showsPoweredBy: Bool
 
+    /// Whether the screen's bar offers chat history.
+    ///
+    /// Under ``TalqynDeviceIdentity/guest`` the bar never offers it, whatever
+    /// this says: a guest has no history, and the button would open an error.
+    /// This is for the shopper who does have one — a persistent anonymous id
+    /// keeps a history too — and whom the app would rather not show it to:
+    /// set it to `false` while nobody is signed in and back to `true` once
+    /// somebody is. It can change while the screen is up — a tab outlives a
+    /// sign-in. Turning it off also closes the history list if it is open. It
+    /// hides the button only: what the server keeps follows the identity, not
+    /// this flag.
+    public var showsHistory: Bool {
+        didSet {
+            guard showsHistory != oldValue, isViewLoaded else { return }
+            applyShowsHistory()
+        }
+    }
+
     private let rowBuilder: TalqynTranscriptRowBuilder
     private let clarifyPresentation = TalqynClarifyPresentation()
     private var cancellables: Set<AnyCancellable> = []
@@ -211,6 +229,8 @@ public final class TalqynConsultantViewController: UIViewController {
     ///   - showsPoweredBy: Whether the empty screen carries "Powered by
     ///     Talqyn" under the examples. The wording is fixed, in every locale;
     ///     this is the switch.
+    ///   - showsHistory: Whether the bar offers chat history; see
+    ///     ``showsHistory``, which can be changed later.
     ///   - maxFollowUps: How many follow-up prompts to offer under an answer.
     ///     Defaults to three; `0` shows none. Only on this initializer — a
     ///     conversation the app builds carries its own.
@@ -224,13 +244,14 @@ public final class TalqynConsultantViewController: UIViewController {
         imageLoader: TalqynImageLoading = TalqynURLImageLoader.shared,
         showsHeader: Bool = true,
         showsPoweredBy: Bool = true,
+        showsHistory: Bool = true,
         maxFollowUps: Int = TalqynConversationLimits.maxFollowUps
     ) {
         self.init(
             conversation: TalqynConversation(talqyn: talqyn, maxFollowUps: maxFollowUps),
             theme: theme, title: title, exampleQuestions: exampleQuestions, strings: strings,
             priceFormatter: priceFormatter, imageLoader: imageLoader, showsHeader: showsHeader,
-            showsPoweredBy: showsPoweredBy
+            showsPoweredBy: showsPoweredBy, showsHistory: showsHistory
         )
     }
 
@@ -244,7 +265,8 @@ public final class TalqynConsultantViewController: UIViewController {
         priceFormatter: TalqynPriceFormatter = .tenge,
         imageLoader: TalqynImageLoading = TalqynURLImageLoader.shared,
         showsHeader: Bool = true,
-        showsPoweredBy: Bool = true
+        showsPoweredBy: Bool = true,
+        showsHistory: Bool = true
     ) {
         self.conversation = conversation
         self.theme = theme
@@ -258,6 +280,7 @@ public final class TalqynConsultantViewController: UIViewController {
         self.imageLoader = imageLoader
         self.showsHeader = showsHeader
         self.showsPoweredBy = showsPoweredBy
+        self.showsHistory = showsHistory
         rowBuilder = TalqynTranscriptRowBuilder(theme: theme, strings: copy, price: priceFormatter)
         super.init(nibName: nil, bundle: nil)
     }
@@ -434,6 +457,7 @@ public final class TalqynConsultantViewController: UIViewController {
         let restoreEnded = wasRestoring && !isRestoring
 
         setEmptyStateVisible(conversation.isEmpty)
+        applyShowsHistory()
         headerView.setActionsEnabled(!isStreaming && !isRestoring)
         composerView.setStreaming(isStreaming)
         restoreOverlay.talqynSetHidden(!isRestoring)
@@ -597,8 +621,20 @@ public final class TalqynConsultantViewController: UIViewController {
         present(alert, animated: true)
     }
 
+    /// History is offered when the app wants it shown and there is one to
+    /// show.
+    private var offersHistory: Bool { showsHistory && conversation.keepsHistory }
+
+    private func applyShowsHistory() {
+        let offersHistory = self.offersHistory
+        headerView.setHistoryVisible(offersHistory)
+        if !offersHistory, presentedViewController is TalqynChatHistoryViewController {
+            dismiss(animated: TalqynMotion.animates())
+        }
+    }
+
     private func openHistory() {
-        guard !conversation.isStreaming else { return }
+        guard offersHistory, !conversation.isStreaming else { return }
         view.endEditing(true)
         let history = TalqynChatHistoryViewController(
             talqyn: conversation.talqyn,
@@ -702,6 +738,7 @@ public final class TalqynConsultantViewController: UIViewController {
             onHistory: { [weak self] in self?.openHistory() },
             onLeading: { [weak self] action in self?.leave(action) }
         )
+        headerView.setHistoryVisible(offersHistory)
         composerView.configure(
             onSend: { [weak self] in
                 guard let self else { return }
@@ -745,8 +782,13 @@ extension TalqynConsultantViewController: TalqynTurnViewDelegate {
         delegate?.consultant(self, applyFilters: filters.criteria(query: question))
     }
 
-    func turnDidTapComparison(_ table: TalqynComparisonTable) {
-        let comparison = TalqynComparisonViewController(
+    func turnDidTapComparison(_ table: TalqynComparisonTable, turnID: UUID) {
+        present(makeComparison(table, turnID: turnID), animated: true)
+    }
+
+    /// The comparison a turn proposed, in the screen's theme and copy.
+    func makeComparison(_ table: TalqynComparisonTable, turnID: UUID) -> TalqynComparisonViewController {
+        TalqynComparisonViewController(
             table: table,
             products: conversation.productsByID,
             theme: theme,
@@ -754,10 +796,8 @@ extension TalqynConsultantViewController: TalqynTurnViewDelegate {
             priceFormatter: priceFormatter,
             imageLoader: imageLoader
         ) { [weak self] product in
-            guard let self else { return }
-            self.delegate?.consultant(self, openProduct: product)
+            self?.turnDidTapProduct(product, turnID: turnID)
         }
-        present(comparison, animated: true)
     }
 
     func turnDidSubmitClarify(answer: String, turnID: UUID) {

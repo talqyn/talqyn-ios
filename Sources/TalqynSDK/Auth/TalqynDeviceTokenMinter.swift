@@ -48,7 +48,7 @@ struct TalqynDeviceTokenMinter: Sendable {
         storefront: String,
         clientKeyID: String,
         clientSecret: String,
-        userID: UUID?,
+        userID: String?,
         clockOffset: TimeInterval = 0
     ) async throws -> Minted {
         guard !clientKeyID.isEmpty, !clientSecret.isEmpty else {
@@ -57,13 +57,21 @@ struct TalqynDeviceTokenMinter: Sendable {
         guard !storefront.isEmpty else {
             throw TalqynError.invalidConfiguration("storefront slug is empty")
         }
+        let wireUserID = try userID.map { raw -> String in
+            guard let wire = TalqynDeviceIdentity.wireShopperID(raw) else {
+                throw TalqynError.invalidConfiguration(
+                    "a shopper id must be 1 to 128 characters of [A-Za-z0-9._:-]"
+                )
+            }
+            return wire
+        }
 
         // Serialized exactly once: the signature must cover the bytes that go
         // on the wire. Re-encoding could reorder keys and break it.
         let body: Data
         do {
             body = try TalqynCoding.encoder.encode(
-                Body(storefront: storefront, userID: userID?.uuidString.lowercased())
+                Body(storefront: storefront, userID: wireUserID)
             )
         } catch {
             throw TalqynError.wrap(error)

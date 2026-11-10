@@ -22,6 +22,8 @@ final class TalqynClarifySheetViewController: UIViewController, UIAdaptivePresen
     private let scrollView = UIScrollView()
     private let actionsContainer = UIView()
     private var lastDetentHeight: CGFloat = 0
+    /// The chips on show, with what each stands for.
+    private var chips: [(question: TalqynClarify.Question, option: String, chip: TalqynChipView)] = []
     private let contentTopInset: CGFloat = 24
 
     init(
@@ -63,11 +65,23 @@ final class TalqynClarifySheetViewController: UIViewController, UIAdaptivePresen
         updateContentDetent()
     }
 
+    /// How tall the sheet has to be to show everything without scrolling:
+    /// the questions and the buttons under them.
+    ///
+    /// The safe area under the buttons is not part of it. A detent is a height
+    /// inside the sheet's safe area — the system adds the home indicator's
+    /// strip to a sheet attached to the bottom edge by itself — and counted
+    /// here as well it came out as a blank band of that height between the
+    /// field and the buttons.
+    var contentDetentHeight: CGFloat {
+        contentTopInset + scrollView.contentSize.height + actionsContainer.bounds.height
+    }
+
     /// Sizes the sheet to its content when that is less than the medium
     /// detent: two questions do not need half a screen.
     private func updateContentDetent() {
         guard #available(iOS 16, *) else { return }
-        let height = contentTopInset + scrollView.contentSize.height + actionsContainer.bounds.height + view.safeAreaInsets.bottom
+        let height = contentDetentHeight
         guard height > 0, abs(height - lastDetentHeight) > 1 else { return }
         lastDetentHeight = height
         sheetPresentationController?.animateChanges {
@@ -82,10 +96,19 @@ final class TalqynClarifySheetViewController: UIViewController, UIAdaptivePresen
         onUserDismiss?()
     }
 
+    /// Brings the chips in line with the draft. They are built once and then
+    /// only told whether they are selected: a chip replaced under a tap — or
+    /// under VoiceOver's cursor — is a chip that lost its place.
     private func rebuildQuestions() {
-        questionsStack.talqynRemoveAllArranged()
-        for question in clarify.questions {
-            questionsStack.addArrangedSubview(makeQuestionSection(question))
+        if chips.isEmpty {
+            questionsStack.talqynRemoveAllArranged()
+            for question in clarify.questions {
+                questionsStack.addArrangedSubview(makeQuestionSection(question))
+            }
+        }
+        for entry in chips {
+            let isSelected = draft.isSelected(entry.option, in: entry.question)
+            if entry.chip.isSelected != isSelected { entry.chip.isSelected = isSelected }
         }
         submitButton.isEnabled = !draft.answer(for: clarify.questions).isEmpty
     }
@@ -103,6 +126,7 @@ final class TalqynClarifySheetViewController: UIViewController, UIAdaptivePresen
         chipsView.setChips(question.options.map { option in
             let chip = TalqynChipView(theme: theme, title: option, isSelected: draft.isSelected(option, in: question))
             chip.onTap = { [weak self] in self?.toggle(option, in: question) }
+            chips.append((question, option, chip))
             return chip
         })
         return UIStackView.talqynVertical([label, chipsView], spacing: 10)

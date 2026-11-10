@@ -237,6 +237,12 @@ final class TalqynHeaderView: UIView {
         }
     }
 
+    /// Shows or removes history. Hidden, it stays hidden wherever
+    /// ``setLeadingAction(_:)`` moves it.
+    func setHistoryVisible(_ visible: Bool) {
+        historyButton.talqynSetHidden(!visible)
+    }
+
     func setNewChatVisible(_ visible: Bool) {
         newChatButton.talqynSetHidden(!visible)
     }

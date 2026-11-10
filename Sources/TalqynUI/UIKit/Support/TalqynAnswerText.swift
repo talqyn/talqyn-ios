@@ -95,7 +95,12 @@ enum TalqynAnswerText {
     /// selectable so a shopper can copy a model name and follow a product
     /// link, which is drawn in the accent.
     @MainActor static func makeTextView(theme: TalqynTheme) -> UITextView {
-        let textView = UITextView()
+        let textView: UITextView
+        if #available(iOS 16.0, *) {
+            textView = UITextView(usingTextLayoutManager: false)
+        } else {
+            textView = UITextView()
+        }
         textView.isEditable = false
         textView.isSelectable = true
         textView.isScrollEnabled = false
