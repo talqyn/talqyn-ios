@@ -29,10 +29,13 @@ final class ConsultantScreenLifecycleTests: XCTestCase {
          "event: done", #"data: {"session_id":"sess-1"}"#, ""]
     }
 
-    private func makeScreen() -> (TalqynConsultantViewController, SlowStreamTransport) {
+    /// - Parameter keepsOpen: Whether the answer stops short of its `done` and
+    ///   waits, the way a slow answer does: the turn then runs until something
+    ///   stops it, however long the test takes to get there.
+    private func makeScreen(keepsOpen: Bool = false) -> (TalqynConsultantViewController, SlowStreamTransport) {
         let transport = SlowStreamTransport()
         transport.responses.enqueueDeviceToken()
-        transport.enqueueStream(lines: turnLines())
+        transport.enqueueStream(lines: keepsOpen ? Array(turnLines().dropLast(3)) : turnLines(), keepsOpen: keepsOpen)
         let conversation = TalqynConversation(talqyn: TestFixtures.client(transport: transport))
         return (TalqynConsultantViewController(conversation: conversation), transport)
     }
@@ -58,7 +61,7 @@ final class ConsultantScreenLifecycleTests: XCTestCase {
     }
 
     func testLeavingTheScreenStopsTheTurn() async throws {
-        let (screen, transport) = makeScreen()
+        let (screen, transport) = makeScreen(keepsOpen: true)
         let (window, navigation) = present(screen)
         defer { window.isHidden = true }
 

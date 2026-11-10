@@ -13,10 +13,12 @@ final class TranscriptKeyboardTests: XCTestCase {
     private let composer: CGFloat = 120
     private let keyboard: CGFloat = 336
 
-    override func tearDown() {
-        window?.isHidden = true
-        window = nil
-        super.tearDown()
+    override func tearDown() async throws {
+        await MainActor.run {
+            window?.isHidden = true
+            window = nil
+        }
+        try await super.tearDown()
     }
 
     private func find<T: UIView>(_ type: T.Type, in view: UIView) -> [T] {

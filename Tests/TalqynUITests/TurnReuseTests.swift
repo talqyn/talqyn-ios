@@ -12,10 +12,12 @@ import XCTest
 final class TurnReuseTests: XCTestCase {
     nonisolated(unsafe) private var window: UIWindow?
 
-    override func tearDown() {
-        window?.isHidden = true
-        window = nil
-        super.tearDown()
+    override func tearDown() async throws {
+        await MainActor.run {
+            window?.isHidden = true
+            window = nil
+        }
+        try await super.tearDown()
     }
 
     private func find<T>(_ type: T.Type, in view: UIView) -> [T] {
