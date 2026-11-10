@@ -22,11 +22,32 @@ final class TalqynTranscriptView: UIView {
     /// floating over it. The transcript runs the full height of the screen —
     /// content passes under the glass — so the last row needs this much space
     /// below it to be readable, and the pin's reserve never falls under it.
+    ///
+    /// It changes with the composer — a second line of a question — and with
+    /// the keyboard, which the composer rides. A shopper at the end of the
+    /// transcript stays at its end: the last answer moves up with the keyboard
+    /// rather than disappearing under it, and comes back down with it. One
+    /// reading somewhere above is left where they are, and a pinned question
+    /// keeps its place at the top.
     var bottomReserve: CGFloat = 0 {
         didSet {
             guard bottomReserve != oldValue else { return }
-            collectionView.contentInset.bottom = max(collectionView.contentInset.bottom, bottomReserve)
             collectionView.verticalScrollIndicatorInsets.bottom = bottomReserve
+            let pinRoom = max(0, collectionView.contentInset.bottom - oldValue)
+            let wasAtEnd = anchoredRowID == nil && !rows.isEmpty
+                && contentBottomOffsetY(reserve: oldValue) - collectionView.contentOffset.y <= bottomProximity
+            if wasAtEnd {
+                collectionView.contentInset.bottom = bottomReserve
+                let target = contentBottomOffsetY
+                if abs(collectionView.contentOffset.y - target) > 0.5 {
+                    collectionView.setContentOffset(CGPoint(x: collectionView.contentOffset.x, y: target), animated: false)
+                }
+            } else {
+                collectionView.contentInset.bottom = bottomReserve + pinRoom
+                applyAnchor()
+                trimReserveIfPossible()
+            }
+            refreshPinnedState()
         }
     }
 
@@ -58,6 +79,12 @@ final class TalqynTranscriptView: UIView {
     /// pill is part of it; the section carries the rest.
     static let composerGap: CGFloat = 32
 
+    /// What the list takes a row's height to be before it has drawn it, the
+    /// space between two rows, and the space above the first.
+    private static let estimatedRowHeight: CGFloat = 80
+    private static let rowSpacing: CGFloat = 20
+    private static let firstRowTop: CGFloat = 16
+
     /// The width of the conversation column.
     private var contentWidth: CGFloat {
         min(collectionView.bounds.width, theme.metrics.maxContentWidth)
@@ -66,16 +93,18 @@ final class TalqynTranscriptView: UIView {
     private lazy var collectionView: UICollectionView = {
         let maxContentWidth = theme.metrics.maxContentWidth
         let layout = UICollectionViewCompositionalLayout { _, environment in
-            let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .estimated(80))
+            let size = NSCollectionLayoutSize(
+                widthDimension: .fractionalWidth(1), heightDimension: .estimated(Self.estimatedRowHeight)
+            )
             let item = NSCollectionLayoutItem(layoutSize: size)
             let group = NSCollectionLayoutGroup.vertical(layoutSize: size, subitems: [item])
             let section = NSCollectionLayoutSection(group: group)
             let side = max(0, floor((environment.container.effectiveContentSize.width - maxContentWidth) / 2))
             section.contentInsets = NSDirectionalEdgeInsets(
-                top: 16, leading: side,
+                top: Self.firstRowTop, leading: side,
                 bottom: Self.composerGap - TalqynComposerView.topInset, trailing: side
             )
-            section.interGroupSpacing = 20
+            section.interGroupSpacing = Self.rowSpacing
             return section
         }
         let view = UICollectionView(frame: .zero, collectionViewLayout: layout)
@@ -114,6 +143,11 @@ final class TalqynTranscriptView: UIView {
         guard width > 0, width != laidOutWidth else { return }
         let isFirstLayout = laidOutWidth == 0
         laidOutWidth = width
+        if let anchor = pendingAnchor {
+            pendingAnchor = nil
+            applyRows(anchor: anchor)
+            return
+        }
         guard !isFirstLayout, dataSource != nil else { return }
         var snapshot = dataSource.snapshot()
         guard !snapshot.itemIdentifiers.isEmpty else { return }
@@ -137,16 +171,23 @@ final class TalqynTranscriptView: UIView {
             }
         })
 
+        guard collectionView.bounds.width > 0 else {
+            if anchor != .keep || pendingAnchor == nil { pendingAnchor = anchor }
+            return
+        }
+        pendingAnchor = nil
+        applyRows(anchor: anchor)
+    }
+
+    /// Where the rows that wait for the first layout are headed.
+    private var pendingAnchor: TalqynTranscriptAnchor?
+
+    /// Hands the rows to the list and puts the transcript where `anchor` says.
+    private func applyRows(anchor: TalqynTranscriptAnchor) {
         var snapshot = NSDiffableDataSourceSnapshot<Int, RowID>()
         snapshot.appendSections([0])
-        snapshot.appendItems(rowsByID.isEmpty ? [] : turnRows.compactMap { row in
-            switch row {
-            case let .user(id, _): return RowID.turn(id)
-            case let .assistant(turn): return RowID.turn(turn.turnID)
-            case .suggestions: return nil
-            }
-        })
-        if !suggestions.isEmpty {
+        snapshot.appendItems(rows.compactMap { row in rowIdentifier(row).map(RowID.turn) })
+        if !rows.isEmpty, !suggestions.isEmpty {
             snapshot.appendItems([.suggestions])
         }
         let existing = Set(dataSource.snapshot().itemIdentifiers)
@@ -154,10 +195,17 @@ final class TalqynTranscriptView: UIView {
         if !carriedOver.isEmpty {
             snapshot.reconfigureItems(carriedOver)
         }
+        let followUpsAppeared = anchor == .keep && !carriedOver.isEmpty
+            && !suggestions.isEmpty && !existing.contains(.suggestions)
+
+        if carriedOver.isEmpty { jumpAhead(anchor, rowIDs: snapshot.itemIdentifiers) }
 
         dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
             guard let self else { return }
             self.collectionView.layoutIfNeeded()
+            if followUpsAppeared, let indexPath = self.dataSource.indexPath(for: .suggestions) {
+                self.collectionView.cellForItem(at: indexPath)?.contentView.talqynFadeIn()
+            }
             if self.rows.isEmpty {
                 self.anchoredRowID = nil
                 self.collectionView.contentInset.bottom = self.bottomReserve
@@ -175,6 +223,33 @@ final class TalqynTranscriptView: UIView {
             }
             self.refreshPinnedState()
         }
+    }
+
+    /// Goes to about where a reload is headed before the list lays anything
+    /// out, so that it lays out that place and not the one it is leaving.
+    ///
+    /// A turn is dear to draw. A chat opened from history, or a screen put up
+    /// over a long conversation, would otherwise draw the turns at the top
+    /// first — where the list happens to stand — only to leave them for the
+    /// end a moment later. The place is worked out the way the list itself
+    /// will work it out, from its guess at a row it has not drawn; that holds
+    /// only for a transcript none of whose rows it has drawn yet. The
+    /// anchoring that follows the layout puts the transcript exactly.
+    private func jumpAhead(_ anchor: TalqynTranscriptAnchor, rowIDs: [RowID]) {
+        let index: Int
+        switch anchor {
+        case .keep:
+            return
+        case .bottom:
+            index = rowIDs.count - 1
+        case .newestTurn:
+            guard let id = newestTurnRowID, let item = rowIDs.firstIndex(of: id) else { return }
+            index = item
+        }
+        guard index > 0 else { return }
+        let guess = Self.firstRowTop + CGFloat(index) * (Self.estimatedRowHeight + Self.rowSpacing) - anchorTopGap
+        collectionView.contentInset.bottom = max(collectionView.contentInset.bottom, collectionView.bounds.height)
+        collectionView.contentOffset.y = guess
     }
 
     /// Updates one turn in place — the streaming one, many times a second.
@@ -211,12 +286,18 @@ final class TalqynTranscriptView: UIView {
 
     // MARK: - Scrolling
 
-    private func anchorNewestTurn() {
-        guard let last = rows.indices.last else { return }
+    /// The row a new question is pinned by: the question itself, or the turn
+    /// that came without one.
+    private var newestTurnRowID: RowID? {
+        guard let last = rows.indices.last else { return nil }
         var index = last
         if index > 0, case .user = rows[index - 1] { index -= 1 }
-        guard let id = rowIdentifier(rows[index]) else { return }
-        anchoredRowID = .turn(id)
+        return rowIdentifier(rows[index]).map(RowID.turn)
+    }
+
+    private func anchorNewestTurn() {
+        guard let id = newestTurnRowID else { return }
+        anchoredRowID = id
         applyAnchor()
     }
 
@@ -269,10 +350,27 @@ final class TalqynTranscriptView: UIView {
     func scrollToBottom(animated: Bool) {
         anchoredRowID = nil
         layoutIfNeeded()
+        guard animated else { return settleAtBottom() }
         let target = contentBottomOffsetY
         guard abs(collectionView.contentOffset.y - target) > 0.5 else { return }
-        isScrollingProgrammatically = animated
-        collectionView.setContentOffset(CGPoint(x: collectionView.contentOffset.x, y: target), animated: animated)
+        isScrollingProgrammatically = true
+        collectionView.setContentOffset(CGPoint(x: collectionView.contentOffset.x, y: target), animated: true)
+    }
+
+    /// Goes to the end in one step, and stays on it as the end moves.
+    ///
+    /// The height of a row that has not been on screen is a guess, and a turn
+    /// is many times taller than it: the end worked out from guesses lies
+    /// somewhere in the middle of a chat opened from history. Getting there
+    /// lays the rows of that place out, their real heights move the end, and
+    /// the step is taken again until it stops moving.
+    private func settleAtBottom() {
+        for _ in 0..<12 {
+            let target = contentBottomOffsetY
+            guard abs(collectionView.contentOffset.y - target) > 0.5 else { return }
+            collectionView.setContentOffset(CGPoint(x: collectionView.contentOffset.x, y: target), animated: false)
+            collectionView.layoutIfNeeded()
+        }
     }
 
     func refreshPinnedState() {
@@ -280,10 +378,13 @@ final class TalqynTranscriptView: UIView {
         setPinnedToBottom(contentBottomOffsetY - collectionView.contentOffset.y <= bottomProximity)
     }
 
-    private var contentBottomOffsetY: CGFloat {
+    private var contentBottomOffsetY: CGFloat { contentBottomOffsetY(reserve: bottomReserve) }
+
+    /// Where the transcript rests at its end, for a given room under it.
+    private func contentBottomOffsetY(reserve: CGFloat) -> CGFloat {
         max(
             -collectionView.adjustedContentInset.top,
-            collectionView.contentSize.height - collectionView.bounds.height + bottomReserve
+            collectionView.contentSize.height - collectionView.bounds.height + reserve
         )
     }
 

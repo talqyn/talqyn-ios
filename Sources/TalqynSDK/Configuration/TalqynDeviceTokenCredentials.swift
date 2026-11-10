@@ -66,12 +66,14 @@ public struct TalqynDeviceTokenCredentials: Sendable, Equatable {
 /// gets a history that reopens under the same id on the next launch. This is why
 /// the id **must survive app restarts**.
 ///
-/// The server accepts UUIDs only. The id is asserted by the device and confirmed
-/// by nobody, so being unguessable is the only thing protecting somebody else's
-/// conversations: an enumerable id such as a CRM row number would expose other
-/// shoppers' history by iteration. A CRM identifier therefore does not belong
-/// here — if history has to follow a shopper across devices, map your own id to
-/// a stable UUID on your backend and pass it through ``user(_:)``.
+/// A named shopper's id is yours, in your own format. It is asserted by the
+/// device and confirmed by nobody, so being unguessable is the only thing
+/// protecting somebody else's conversations — and choosing such an id is the
+/// storefront's responsibility. A random one (a UUID, an opaque account id) is
+/// fine; an enumerable one such as a CRM row number exposes other shoppers'
+/// history to anyone who substitutes it. If your account ids are enumerable,
+/// map each to a stable random id on your backend and pass that through
+/// ``user(_:)-swift.enum.case``.
 public enum TalqynDeviceIdentity: Sendable, Equatable {
     /// A guest token: no `user_id` is sent. The consultant works, no history is
     /// recorded.
@@ -81,9 +83,45 @@ public enum TalqynDeviceIdentity: Sendable, Equatable {
     /// configured ``TalqynUserIDStore``.
     case persistentAnonymous
 
-    /// An explicit shopper UUID, for example one handed out by your backend
-    /// after sign-in.
-    case user(UUID)
+    /// An explicit shopper id, for example the account's id from your backend
+    /// after sign-in: 1 to 128 characters of `[A-Za-z0-9._:-]`.
+    ///
+    /// A UUID is sent lowercased, as the server stores it, so that one account
+    /// written two ways stays one shopper. Any other id is sent exactly as
+    /// given and is case-sensitive. An id of another form fails the first
+    /// request with ``TalqynError/invalidConfiguration(_:)``.
+    case user(String)
+
+    /// An explicit shopper id that is a UUID.
+    ///
+    /// The same as ``user(_:)-swift.enum.case`` with the UUID's lowercase
+    /// string.
+    public static func user(_ id: UUID) -> TalqynDeviceIdentity {
+        .user(id.uuidString.lowercased())
+    }
+}
+
+extension TalqynDeviceIdentity {
+    /// The longest shopper id the server accepts.
+    static let maxShopperIDLength = 128
+
+    /// The id as it goes on the wire, or `nil` when the server would refuse
+    /// it: anything but 1 to 128 characters of `[A-Za-z0-9._:-]`.
+    ///
+    /// A UUID is lowercased, which is what the server does to it; an id the
+    /// server knows nothing about the spelling of is left alone.
+    static func wireShopperID(_ raw: String) -> String? {
+        let scalars = raw.unicodeScalars
+        guard !scalars.isEmpty, scalars.count <= maxShopperIDLength else { return nil }
+        let allowed = scalars.allSatisfy { scalar in
+            switch scalar {
+            case "A"..."Z", "a"..."z", "0"..."9", ".", "_", ":", "-": return true
+            default: return false
+            }
+        }
+        guard allowed else { return nil }
+        return UUID(uuidString: raw) != nil ? raw.lowercased() : raw
+    }
 }
 
 /// The secret stays out of logs, crash reports, and the debugger.
@@ -94,7 +132,7 @@ public enum TalqynDeviceIdentity: Sendable, Equatable {
 /// anything that holds them, ``TalqynConfiguration`` first of all: a struct
 /// prints its properties through their debug descriptions and dumps them
 /// through their mirrors. All three are replaced here, and each shows
-/// `clientSecret: ***`. The shopper's UUID is hidden the same way; see
+/// `clientSecret: ***`. The shopper's id is hidden the same way; see
 /// ``TalqynDeviceIdentity``.
 extension TalqynDeviceTokenCredentials: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
     /// The credentials with the secret masked:
@@ -122,8 +160,8 @@ extension TalqynDeviceTokenCredentials: CustomStringConvertible, CustomDebugStri
     }
 }
 
-/// A shopper's UUID is what their history is read under, so it stays out of
-/// print the way the client secret does: ``user(_:)`` prints as `user(***)`,
+/// A shopper's id is what their history is read under, so it stays out of
+/// print the way the client secret does: a named shopper prints as `user(***)`,
 /// on its own and inside the credentials.
 extension TalqynDeviceIdentity: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
     /// `guest`, `persistentAnonymous`, or `user(***)`.
@@ -138,7 +176,7 @@ extension TalqynDeviceIdentity: CustomStringConvertible, CustomDebugStringConver
     /// The same as ``description``.
     public var debugDescription: String { description }
 
-    /// No children: the UUID of ``user(_:)`` is the one thing a mirror would
+    /// No children: the id of a named shopper is the one thing a mirror would
     /// add.
     public var customMirror: Mirror {
         Mirror(self, children: [:], displayStyle: .enum)

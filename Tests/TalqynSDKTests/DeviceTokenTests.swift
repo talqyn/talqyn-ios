@@ -523,6 +523,57 @@ final class DeviceTokenTests: XCTestCase {
 
     // MARK: - What prints
 
+    /// The id is the storefront's own: an account id that is not a UUID goes
+    /// out exactly as given.
+    func testNamedIdentityInTheStorefrontFormatIsSentAsItIs() async throws {
+        let transport = StubTransport()
+        let identifier = "5ebd09d144a7d1cac29db19D"
+        transport.enqueueDeviceToken(userID: identifier)
+        transport.enqueue(json: emptySearch)
+
+        let talqyn = TestFixtures.client(
+            credentials: TestFixtures.deviceToken(identity: .user(identifier)), transport: transport
+        )
+        _ = try await talqyn.search.search("iphone")
+
+        XCTAssertEqual(transport.sent[0].bodyJSON["user_id"] as? String, identifier)
+        let reported = await talqyn.currentUserID()
+        XCTAssertEqual(reported, identifier)
+    }
+
+    /// A UUID passed as a string is lowercased like one passed as a `UUID`.
+    func testUUIDStringIsSentLowercased() async throws {
+        let transport = StubTransport()
+        let identifier = UUID()
+        transport.enqueueDeviceToken(userID: identifier.uuidString.lowercased())
+        transport.enqueue(json: emptySearch)
+
+        let talqyn = TestFixtures.client(
+            credentials: TestFixtures.deviceToken(identity: .user(identifier.uuidString)), transport: transport
+        )
+        _ = try await talqyn.search.search("iphone")
+
+        XCTAssertEqual(transport.sent[0].bodyJSON["user_id"] as? String, identifier.uuidString.lowercased())
+        XCTAssertEqual(TalqynDeviceIdentity.user(identifier), .user(identifier.uuidString.lowercased()))
+    }
+
+    /// An id the server would answer `422` to is refused before any request.
+    func testMalformedUserIDIsRefusedBeforeTheNetwork() async throws {
+        for malformed in ["", "buyer@example.com", "a b", String(repeating: "x", count: 129)] {
+            let transport = StubTransport()
+            let talqyn = TestFixtures.client(
+                credentials: TestFixtures.deviceToken(identity: .user(malformed)), transport: transport
+            )
+            do {
+                _ = try await talqyn.search.search("iphone")
+                XCTFail("expected a refusal for \(malformed.count) characters")
+            } catch let error as TalqynError {
+                guard case .invalidConfiguration = error else { return XCTFail("unexpected \(error)") }
+            }
+            XCTAssertTrue(transport.sent.isEmpty)
+        }
+    }
+
     /// Whatever prints a value — interpolation, `String(reflecting:)`, `dump`,
     /// the default printing of a struct that holds it — must leave out the
     /// client secret, the token, and the shopper's UUID: printed values end up

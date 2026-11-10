@@ -38,14 +38,27 @@ public final class TalqynURLImageLoader: TalqynImageLoading, @unchecked Sendable
 
     private let session: URLSession
     private let cache = NSCache<NSURL, UIImage>()
+    private let maxPixelSize: CGFloat
+
+    /// The longest side an image is kept at, in pixels, unless the loader is
+    /// built with its own: the screens' largest picture — a carousel tile —
+    /// at three pixels to the point, with room to spare.
+    public static let defaultMaxPixelSize: CGFloat = 600
 
     /// Creates a loader.
     ///
-    /// - Parameter session: The session to fetch through. Defaults to a session
-    ///   with the system's disk cache, which is what images want.
-    public init(session: URLSession = .shared) {
+    /// - Parameters:
+    ///   - session: The session to fetch through. Defaults to a session with
+    ///     the system's disk cache, which is what images want.
+    ///   - maxPixelSize: The longest side an image is kept at, in pixels. A
+    ///     catalog's pictures are made for a product page, and a card shows
+    ///     them a few times smaller: kept whole, two hundred of them decoded
+    ///     are hundreds of megabytes. `0` keeps every image as it came.
+    public init(session: URLSession = .shared, maxPixelSize: CGFloat = TalqynURLImageLoader.defaultMaxPixelSize) {
         self.session = session
+        self.maxPixelSize = maxPixelSize
         cache.countLimit = 200
+        cache.totalCostLimit = 64 * 1024 * 1024
     }
 
     public func image(for url: URL) async throws -> UIImage {
@@ -53,9 +66,25 @@ public final class TalqynURLImageLoader: TalqynImageLoading, @unchecked Sendable
         let (data, _) = try await session.data(from: url)
         guard let image = UIImage(data: data) else { throw URLError(.cannotDecodeContentData) }
         // Decoding happens once here rather than on first draw.
-        let decoded = await image.byPreparingForDisplay() ?? image
-        cache.setObject(decoded, forKey: url as NSURL)
+        let decoded = await Self.prepared(image, maxPixelSize: maxPixelSize)
+        cache.setObject(decoded, forKey: url as NSURL, cost: Self.decodedBytes(of: decoded))
         return decoded
+    }
+
+    /// The image decoded, and scaled down when it is larger than the screens
+    /// show it.
+    private static func prepared(_ image: UIImage, maxPixelSize: CGFloat) async -> UIImage {
+        let pixels = CGSize(width: image.size.width * image.scale, height: image.size.height * image.scale)
+        let longest = max(pixels.width, pixels.height)
+        guard maxPixelSize > 0, longest > maxPixelSize else { return await image.byPreparingForDisplay() ?? image }
+        let ratio = maxPixelSize / longest
+        let target = CGSize(width: floor(image.size.width * ratio), height: floor(image.size.height * ratio))
+        if let thumbnail = await image.byPreparingThumbnail(ofSize: target) { return thumbnail }
+        return await image.byPreparingForDisplay() ?? image
+    }
+
+    private static func decodedBytes(of image: UIImage) -> Int {
+        Int(image.size.width * image.scale * image.size.height * image.scale * 4)
     }
 
     public func cachedImage(for url: URL) -> UIImage? {

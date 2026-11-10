@@ -115,5 +115,50 @@ final class TranscriptRowsTests: XCTestCase {
         XCTAssertEqual(sections.map { $0.products.map(\.talqynID) }, [[1], [2, 1]])
         XCTAssertEqual(sections.map(\.title), ["Sofa · 1", "Table · 2"])
     }
+
+    // MARK: - Rendering once
+
+    /// An answer is rendered once and kept: what a later turn brings — its
+    /// own products — does not make the answers before it stale, or a long
+    /// chat would be rendered again from the top each time an answer settled.
+    /// A product the answer itself cites is another matter.
+    func testAnAnswerIsRenderedAgainOnlyWhenWhatItShowsChanged() async throws {
+        let transport = StubTransport()
+        transport.enqueueStream(lines:
+            event("products", #"{"items":[{"talqyn_id":1,"title":"Sofa"}]}"#)
+                + event("delta", #"{"text":"Take the [p:1] or wait for [p:9]."}"#)
+                + event("done", #"{"session_id":"sess-1"}"#))
+        transport.enqueueStream(lines:
+            event("products", #"{"items":[{"talqyn_id":2,"title":"Table"}]}"#)
+                + event("delta", #"{"text":"And a table."}"#)
+                + event("done", #"{"session_id":"sess-1"}"#))
+        transport.enqueueStream(lines:
+            event("products", #"{"items":[{"talqyn_id":9,"title":"Armchair"}]}"#)
+                + event("delta", #"{"text":"Here it is."}"#)
+                + event("done", #"{"session_id":"sess-1"}"#))
+        let conversation = TalqynConversation(talqyn: try await TestFixtures.preparedClient(transport: transport))
+        let builder = TalqynTranscriptRowBuilder(theme: .default, strings: .en, price: .tenge)
+        func firstAnswer() throws -> NSAttributedString {
+            let turn = try XCTUnwrap(conversation.turns.compactMap(\.assistant).first)
+            let row = builder.turnRow(turn, conversation: conversation, dismissedClarifyTurns: [])
+            guard case let .text(_, content, _)? = row.blocks.first else { throw XCTSkip("no paragraph") }
+            return content
+        }
+
+        conversation.send("a sofa")
+        await settle(conversation)
+        let rendered = try firstAnswer()
+        XCTAssertFalse(rendered.string.contains("Armchair"))
+
+        conversation.send("and a table")
+        await settle(conversation)
+        XCTAssertTrue(try firstAnswer() === rendered, "a later turn's products made the answer stale")
+
+        conversation.send("the armchair")
+        await settle(conversation)
+        let again = try firstAnswer()
+        XCTAssertFalse(again === rendered)
+        XCTAssertTrue(again.string.contains("Armchair"), "a product the answer cites arrived, and the answer did not take it")
+    }
 }
 #endif

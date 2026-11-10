@@ -81,6 +81,48 @@ final class ConsultantScreenLifecycleTests: XCTestCase {
         return nil
     }
 
+    /// History is for a shopper the app knows. The app says when there is one,
+    /// and may change its mind while the screen is up: a tab outlives a sign-in.
+    func testHistoryIsOfferedOnlyWhileTheAppSaysSo() async throws {
+        let transport = SlowStreamTransport()
+        transport.responses.enqueueDeviceToken()
+        let talqyn = TestFixtures.client(transport: transport)
+        await talqyn.setIdentity(.persistentAnonymous)
+        let conversation = TalqynConversation(talqyn: talqyn)
+        let screen = TalqynConsultantViewController(conversation: conversation, strings: .en, showsHistory: false)
+        let (window, _) = present(screen)
+        defer { window.isHidden = true }
+        let label = TalqynUIStrings.en.historyTitle
+        await conversation.refreshIdentity()
+
+        XCTAssertNil(visibleButton(labeled: label, in: screen.view), "signed out")
+
+        screen.showsHistory = true
+        XCTAssertNotNil(visibleButton(labeled: label, in: screen.view), "signed in")
+
+        screen.showsHistory = false
+        XCTAssertNil(visibleButton(labeled: label, in: screen.view), "signed out again")
+    }
+
+    /// A guest has no history — the server refuses the list — so the button
+    /// that would open an error is not there, and comes back with a shopper.
+    func testAGuestIsNotOfferedHistory() async throws {
+        let transport = SlowStreamTransport()
+        transport.responses.enqueueDeviceToken()
+        let talqyn = TestFixtures.client(transport: transport)
+        await talqyn.setIdentity(.guest)
+        let screen = TalqynConsultantViewController(conversation: TalqynConversation(talqyn: talqyn), strings: .en)
+        let (window, _) = present(screen)
+        defer { window.isHidden = true }
+        let label = TalqynUIStrings.en.historyTitle
+
+        await wait({ self.visibleButton(labeled: label, in: screen.view) == nil }, "a guest is still offered history")
+
+        await talqyn.setIdentity(.persistentAnonymous)
+        await screen.conversation.refreshIdentity()
+        await wait({ self.visibleButton(labeled: label, in: screen.view) != nil }, "history did not come back")
+    }
+
     /// The screen hides the navigation bar, so it has to offer the way back
     /// itself — and the edge swipe must keep working without the bar.
     func testAPushedScreenOffersTheWayBackAndKeepsTheSwipe() async throws {
@@ -115,6 +157,7 @@ final class ConsultantScreenLifecycleTests: XCTestCase {
     /// A tab of its own has nowhere to go back to: no arrow, no cross.
     func testARootScreenHasNoWayOut() async throws {
         let (screen, _) = makeScreen()
+        await screen.conversation.talqyn.setIdentity(.persistentAnonymous)
         let navigation = UINavigationController(rootViewController: screen)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         window.rootViewController = navigation

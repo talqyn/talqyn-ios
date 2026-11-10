@@ -100,10 +100,11 @@ actor TalqynDeviceTokenAuthorizer {
         self.issued = nil
     }
 
-    /// The server's canonical form is lowercase; the local fallback is
-    /// lowercased too so the value does not change casing once a token exists.
+    /// The local fallback is in the form that goes on the wire — a UUID
+    /// lowercased, as the server echoes it — so the value does not change
+    /// once a token exists.
     func currentUserID() -> String? {
-        issued?.token.userID ?? resolveUserID()?.uuidString.lowercased()
+        issued?.token.userID ?? resolveUserID()
     }
 
     /// Who the SDK acts as, as the app set it.
@@ -242,17 +243,20 @@ actor TalqynDeviceTokenAuthorizer {
 
     /// `persistentAnonymous` generates the UUID on first use and stores it:
     /// without an id that survives a restart there is no chat history.
-    private func resolveUserID() -> UUID? {
+    ///
+    /// A named id the server would refuse is passed on as it is: the minter
+    /// turns it into ``TalqynError/invalidConfiguration(_:)``.
+    private func resolveUserID() -> String? {
         switch identity {
         case .guest:
             return nil
         case let .user(id):
-            return id
+            return TalqynDeviceIdentity.wireShopperID(id) ?? id
         case .persistentAnonymous:
-            if let stored = store.loadUserID() { return stored }
+            if let stored = store.loadUserID() { return stored.uuidString.lowercased() }
             let generated = UUID()
             store.saveUserID(generated)
-            return generated
+            return generated.uuidString.lowercased()
         }
     }
 }

@@ -53,6 +53,13 @@ public final class TalqynConversation: ObservableObject {
     /// so. Cleared by the next rating.
     @Published public var feedbackFailure: TalqynError?
 
+    /// Whether the shopper the client acts as has a chat history: `false`
+    /// under ``TalqynDeviceIdentity/guest``, whose conversations are kept for
+    /// nobody and whose list of chats the server refuses. A screen offers
+    /// history only while this is `true`. As of the last
+    /// ``refreshIdentity()``.
+    @Published public private(set) var keepsHistory = true
+
     /// The client the conversation talks through.
     public let talqyn: Talqyn
 
@@ -579,8 +586,13 @@ public final class TalqynConversation: ObservableObject {
     /// reads as a local UUID before the first token and as the server's form
     /// after it, and a screen coming back from a modal must not mistake that
     /// for a different shopper.
+    ///
+    /// It also brings ``keepsHistory`` up to date, so call it after
+    /// `Talqyn.setIdentity(_:)` as well when the screen is already up.
     public func refreshIdentity() async {
         let current = await talqyn.currentIdentity()
+        let keepsHistory = current != .guest
+        if self.keepsHistory != keepsHistory { self.keepsHistory = keepsHistory }
         guard let previous = identitySnapshot else {
             identitySnapshot = current
             return

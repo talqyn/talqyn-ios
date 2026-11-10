@@ -54,6 +54,7 @@ public struct TalqynConsultantView: UIViewControllerRepresentable {
     private let imageLoader: TalqynImageLoading
     private let showsHeader: Bool
     private let showsPoweredBy: Bool
+    private let showsHistory: Bool
     fileprivate let onOpenProduct: @MainActor (TalqynProduct) -> Void
     fileprivate let onOpenSearch: @MainActor (String) -> Void
     fileprivate let onApplyFilters: @MainActor (TalqynFilterCriteria) -> Void
@@ -74,6 +75,8 @@ public struct TalqynConsultantView: UIViewControllerRepresentable {
     ///     ``TalqynURLImageLoader/shared``, whose cache every screen shares.
     ///   - showsHeader: Whether the screen draws its own bar.
     ///   - showsPoweredBy: Whether the empty screen carries "Powered by Talqyn".
+    ///   - showsHistory: Whether the bar offers chat history. Pass whether a
+    ///     shopper is signed in; the screen follows the value as it changes.
     ///   - onOpenProduct: A product card or a product's name was tapped.
     ///   - onOpenSearch: The consultant sent the question to search.
     ///   - onApplyFilters: The consultant proposed a filtered listing.
@@ -89,6 +92,7 @@ public struct TalqynConsultantView: UIViewControllerRepresentable {
         imageLoader: TalqynImageLoading = TalqynURLImageLoader.shared,
         showsHeader: Bool = true,
         showsPoweredBy: Bool = true,
+        showsHistory: Bool = true,
         onOpenProduct: @escaping @MainActor (TalqynProduct) -> Void,
         onOpenSearch: @escaping @MainActor (String) -> Void,
         onApplyFilters: @escaping @MainActor (TalqynFilterCriteria) -> Void,
@@ -104,6 +108,7 @@ public struct TalqynConsultantView: UIViewControllerRepresentable {
         self.imageLoader = imageLoader
         self.showsHeader = showsHeader
         self.showsPoweredBy = showsPoweredBy
+        self.showsHistory = showsHistory
         self.onOpenProduct = onOpenProduct
         self.onOpenSearch = onOpenSearch
         self.onApplyFilters = onApplyFilters
@@ -125,16 +130,19 @@ public struct TalqynConsultantView: UIViewControllerRepresentable {
             priceFormatter: priceFormatter,
             imageLoader: imageLoader,
             showsHeader: showsHeader,
-            showsPoweredBy: showsPoweredBy
+            showsPoweredBy: showsPoweredBy,
+            showsHistory: showsHistory
         )
         controller.delegate = context.coordinator
         return controller
     }
 
     /// The screen is built once; a rebuilt view hands the coordinator its
-    /// fresh closures, which is what a SwiftUI parent changes between renders.
+    /// fresh closures, which is what a SwiftUI parent changes between renders —
+    /// and whether history is offered, which changes when a shopper signs in.
     public func updateUIViewController(_ controller: TalqynConsultantViewController, context: Context) {
         context.coordinator.view = self
+        controller.showsHistory = showsHistory
     }
 
     /// Forwards the screen's delegate calls to the view's closures.
